@@ -18,7 +18,7 @@ class Layer(object):
                 Activation function for layer output
         '''
         # Retrieve the input and output dimensionality based on W's initialization
-        n_output, n_input = W_init.shape
+        n_input, n_output = W_init.shape
         # Make sure b is n_output in size
         assert b_init.shape == (n_output,)
         # All parameters should be shared variables.
@@ -36,7 +36,7 @@ class Layer(object):
         # We can force our bias vector b to be a column vector using numpy's reshape method.
         # When b is a column vector, we can pass a matrix-shaped input to the layer
         # and get a matrix-shaped output, thanks to broadcasting (described below)
-        self.b = theano.shared(value=b_init.reshape(n_output, 1).astype(theano.config.floatX),
+        self.b = theano.shared(value=b_init.reshape(1, n_output).astype(theano.config.floatX),
                                name='b',
                                borrow=True,
                                # Theano allows for broadcasting, similar to numpy.
@@ -45,7 +45,7 @@ class Layer(object):
                                # can be broadcast (copied) along its second dimension in order to be
                                # added to another variable.  For more information, see
                                # http://deeplearning.net/software/theano/library/tensor/basic.html
-                               broadcastable=(False, True))
+                               broadcastable=(True, False))
         self.activation = activation
         # We'll compute the gradient of the cost of the network with respect to the parameters in this list.
         self.params = [self.W, self.b]
@@ -63,7 +63,7 @@ class Layer(object):
                 Mixed, biased, and activated x
         '''
         # Compute linear mix
-        lin_output = T.dot(self.W, x) + self.b
+        lin_output = T.dot(x, self.W) + self.b
         # Output is just linear mix if no activation function
         # Otherwise, apply the activation function
         return (lin_output if self.activation is None else self.activation(lin_output))
@@ -192,6 +192,9 @@ def test_sim():
                    np.random.randn(N)*covariances[1, y] + means[1, y]])
     X = X.astype(np.float32)
     y = np.float32(y)
+    X = np.transpose(X)
+    y = np.transpose(y)
+    y = np.reshape(y, (N,1))
     print type(X), X.shape, type(y), y.shape
     
     
@@ -200,7 +203,7 @@ def test_sim():
     # Output size is just 1-d: class label - 0 or 1
     # Finally, let the hidden layers be twice the size of the input.
     # If we wanted more layers, we could just add another layer size to this list.
-    layer_sizes = [X.shape[0], X.shape[0]*2, 1]
+    layer_sizes = [X.shape[1], X.shape[1]*2, 1]
     print layer_sizes
     # Set initial parameter values
     W_init = []
@@ -211,7 +214,7 @@ def test_sim():
         # Getting the correct initialization matters a lot for non-toy problems.
         # However, here we can just use the following initialization with success:
         # Normally distribute initial weights
-        W_init.append(np.random.randn(n_output, n_input).astype(np.float32))
+        W_init.append(np.random.randn(n_input, n_output).astype(np.float32))
     #    print W_init[-1].dtype
         # Set initial biases to 1
         b_init.append(np.ones(n_output).astype(np.float32))
@@ -225,7 +228,7 @@ def test_sim():
     # Create Theano variables for the MLP input
     mlp_input = T.matrix('mlp_input')
     # ... and the desired output
-    mlp_target = T.vector('mlp_target')
+    mlp_target = T.col('mlp_target')
     # Learning rate and momentum hyperparameter values
     # Again, for non-toy problems these values can make a big difference
     # as to whether the network (quickly) converges on a good local minimum.
@@ -235,9 +238,9 @@ def test_sim():
     cost = mlp.squared_error(mlp_input, mlp_target)
     # Create a theano function for training the network
     train = theano.function([mlp_input, mlp_target], cost,
-                            updates=gradient_updates_momentum(cost, mlp.params, learning_rate, momentum))
+                            updates=gradient_updates_momentum(cost, mlp.params, learning_rate, momentum), mode='DebugMode')
     # Create a theano function for computing the MLP's output given some input
-    mlp_output = theano.function([mlp_input], mlp.output(mlp_input))
+    mlp_output = theano.function([mlp_input], mlp.output(mlp_input), mode='DebugMode')
     
     # Keep track of the number of training iterations performed
     iteration = 0
