@@ -5,6 +5,9 @@ import theano
 # By convention, the tensor submodule is loaded as T
 import theano.tensor as T
 
+functionmode = 'DebugMode'
+functionmode = 'FAST_RUN'
+
 def generate_index(n_mbsize, n_neg, n_shift):
         # Next, we need to generate 2 lists of index
         # these 2 lists together have mbsize*(neg+1) element
@@ -501,9 +504,9 @@ def test_sim():
     cost = mlp.squared_error(mlp_input, mlp_target)
     # Create a theano function for training the network
     train = theano.function([mlp_input, mlp_target], cost,
-                            updates=gradient_updates_momentum(cost, mlp.params, learning_rate, momentum), mode='DebugMode')
+                            updates=gradient_updates_momentum(cost, mlp.params, learning_rate, momentum), mode=functionmode)
     # Create a theano function for computing the MLP's output given some input
-    mlp_output = theano.function([mlp_input], mlp.output(mlp_input), mode='DebugMode')
+    mlp_output = theano.function([mlp_input], mlp.output(mlp_input), mode=functionmode)
     
     # Keep track of the number of training iterations performed
     iteration = 0
@@ -623,18 +626,18 @@ def test_dssm():
         
     # Create a theano function for training the network
     train = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost,
-                            updates=gradient_updates_momentum(cost, dssm.params, learning_rate, momentum), mode='DebugMode')
+                            updates=gradient_updates_momentum(cost, dssm.params, learning_rate, momentum), mode=functionmode)
     # Create a theano function for computing the MLP's output given some input
-    dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode='DebugMode')
+    dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode=functionmode)
     
     
     ywcost = dssm.output_train_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
     ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
-                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode='DebugMode')
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
     
     # Keep track of the number of training iterations performed
     iteration = 0
-    max_iteration = 25
+    max_iteration = 3
     while iteration < max_iteration:
         # Train the network using the entire training set.
         # With large datasets, it's much more common to use stochastic or mini-batch gradient descent
