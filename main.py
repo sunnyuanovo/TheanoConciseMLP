@@ -629,11 +629,12 @@ def test_dssm():
     
     
     ywcost = dssm.output_train_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
-    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost, mode='DebugMode')
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode='DebugMode')
     
     # Keep track of the number of training iterations performed
     iteration = 0
-    max_iteration = 1
+    max_iteration = 25
     while iteration < max_iteration:
         # Train the network using the entire training set.
         # With large datasets, it's much more common to use stochastic or mini-batch gradient descent
@@ -652,8 +653,8 @@ def test_dssm():
 #        print iteration, current_cost
 #        current_output = dssm_output(indexes[2], indexes[3], X, X)
 #        current_output = dssm_output(indexes[2], indexes[3], X, X1)
-        print "indexes[0] = ", indexes[0]
-        print "indexes[1] = ", indexes[1]
+#        print "indexes[0] = ", indexes[0]
+#        print "indexes[1] = ", indexes[1]
         
         current_output = ywtest(indexes[0], indexes[1], X, X1)
 #        current_output = ywtest(X, X1)
