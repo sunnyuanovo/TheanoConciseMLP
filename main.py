@@ -333,6 +333,39 @@ class DSSM(object):
         
         # get the final output
         return  (-1 * column1.sum())
+    def output_train_test(self, Q, D):
+        '''
+        Compute the DSSM's output given an input
+        
+        :parameters:
+            - index_Q, index_D : each is a list of integers, i.e. two tensor vectors
+                two indexes for corresponding vectors
+
+            - Q,D : theano.tensor.var.TensorVariable, should be two matrices
+                Theano symbolic variable for layer input
+
+        :returns:
+            - output : theano.tensor.var.TensorVariable, should be a tensor matrix
+                A scalar value
+        '''
+        # Recursively compute output
+        for layer in self.layers_Q:
+            Q = layer.output(Q)
+        for layer in self.layers_D:
+            D = layer.output(D)
+        return Q, D
+        
+#        cosine_matrix = self.layer_cosine.output(index_Q, index_D, Q, D)
+#        cosine_matrix_reshape = T.reshape(cosine_matrix, (self.layer_cosine.n_mbsize, self.layer_cosine.n_neg+1))
+        
+        # for this matrix, each line is a prob distribution right now.
+#        cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix_reshape)
+        
+        # get the first column
+#        column1 = cosine_matrix_reshape[:,0]
+        
+        # get the final output
+#        return  (-1 * column1.sum())
     def output_test(self, index_Q, index_D, Q, D):
         '''
         Compute the DSSM's output given an input
@@ -530,7 +563,7 @@ def test_dssm():
     # Output size is just 1-d: class label - 0 or 1
     # Finally, let the hidden layers be twice the size of the input.
     # If we wanted more layers, we could just add another layer size to this list.
-    layer_sizes = [X.shape[1], X.shape[1]*2]
+    layer_sizes = [X.shape[1], X.shape[1]*2, X.shape[1]*2]#, X.shape[1]*2, X.shape[1]*2]
     print "layer_sizes is as follows:"
     print layer_sizes
     # Set initial parameter values
@@ -550,7 +583,7 @@ def test_dssm():
         # Note that this doesn't make a ton of sense when using squared distance
         # because the sigmoid function is bounded on [0, 1].
 #        activations.append(T.nnet.sigmoid)
-        activations.append(None)
+        activations.append(T.tanh)
     # Create an instance of the MLP class
     mbsize = 4
     neg = 1
@@ -589,6 +622,10 @@ def test_dssm():
     # Create a theano function for computing the MLP's output given some input
     dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode='DebugMode')
     
+    
+    ywcost = dssm.output_train_test(dssm_input_Q, dssm_input_D)
+    ywtest = theano.function([dssm_input_Q, dssm_input_D], ywcost, mode='DebugMode')
+    
     # Keep track of the number of training iterations performed
     iteration = 0
     max_iteration = 1
@@ -609,7 +646,9 @@ def test_dssm():
 #        current_cost = train(indexes[0], indexes[1], X, X)
 #        print iteration, current_cost
 #        current_output = dssm_output(indexes[2], indexes[3], X, X)
-        current_output = dssm_output(indexes[2], indexes[3], X, X1)
+#        current_output = dssm_output(indexes[2], indexes[3], X, X1)
+#        current_output = ywtest(indexes[0], indexes[1], X, X1)
+        current_output = ywtest(X, X1)
         print current_output
   
               
