@@ -15,7 +15,6 @@ def generate_index(n_mbsize, n_neg, n_shift):
         for tmp_index in range(n_mbsize):
             # for current sample, it's positive pair is itself
             index_train_Q = numpy.append(index_train_Q, [tmp_index] * (n_neg+1))
-            
             index_train_D = numpy.append(index_train_D, [tmp_index])
             index_train_D = numpy.append(index_train_D, [(tmp_index+n_shift+y)%n_mbsize for y in range(n_neg)])
             
@@ -27,7 +26,7 @@ def generate_index(n_mbsize, n_neg, n_shift):
 #        theano.tensor.as_tensor_variable(x, name=None, ndim=None)
 
 #        indexes = [ theano.shared(index_train_Q), theano.shared(index_train_Q), theano.shared(index_test_Q), theano.shared(index_test_D)]
-        indexes = [ index_train_Q.astype('int32'), index_train_Q.astype('int32'), index_test_Q.astype('int32'), index_test_D.astype('int32')]
+        indexes = [ index_train_Q.astype('int32'), index_train_D.astype('int32'), index_test_Q.astype('int32'), index_test_D.astype('int32')]
         return indexes
 
 class CosineLayer(object):
@@ -333,7 +332,7 @@ class DSSM(object):
         
         # get the final output
         return  (-1 * column1.sum())
-    def output_train_test(self, Q, D):
+    def output_train_test(self, index_Q, index_D, Q, D):
         '''
         Compute the DSSM's output given an input
         
@@ -353,16 +352,21 @@ class DSSM(object):
             Q = layer.output(Q)
         for layer in self.layers_D:
             D = layer.output(D)
-        return Q, D
+#        return Q, D
         
-#        cosine_matrix = self.layer_cosine.output(index_Q, index_D, Q, D)
-#        cosine_matrix_reshape = T.reshape(cosine_matrix, (self.layer_cosine.n_mbsize, self.layer_cosine.n_neg+1))
+        cosine_matrix = self.layer_cosine.output(index_Q, index_D, Q, D) * 10
+    
+        cosine_matrix_reshape = T.reshape(cosine_matrix, (self.layer_cosine.n_mbsize, self.layer_cosine.n_neg+1))
         
         # for this matrix, each line is a prob distribution right now.
-#        cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix_reshape)
+        cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix_reshape)
+#        return cosine_matrix_reshape_softmax
         
         # get the first column
-#        column1 = cosine_matrix_reshape[:,0]
+        column1 = cosine_matrix_reshape_softmax[:,0]
+        
+        column1_neglog = -T.log(column1)
+        return column1_neglog.sum()
         
         # get the final output
 #        return  (-1 * column1.sum())
@@ -563,7 +567,7 @@ def test_dssm():
     # Output size is just 1-d: class label - 0 or 1
     # Finally, let the hidden layers be twice the size of the input.
     # If we wanted more layers, we could just add another layer size to this list.
-    layer_sizes = [X.shape[1], X.shape[1]*2, X.shape[1]*2]#, X.shape[1]*2, X.shape[1]*2]
+    layer_sizes = [X.shape[1], X.shape[1]*2]#, X.shape[1]*2]#, X.shape[1]*2, X.shape[1]*2]
     print "layer_sizes is as follows:"
     print layer_sizes
     # Set initial parameter values
@@ -586,9 +590,10 @@ def test_dssm():
         activations.append(T.tanh)
     # Create an instance of the MLP class
     mbsize = 4
-    neg = 1
-    shift = 1
+    neg = 2
+    shift = 2
     indexes = generate_index(mbsize, neg, shift)
+    print indexes
     print indexes[0].dtype
     
     dssm = DSSM(W_init, b_init, mbsize, neg, shift, activations)
@@ -623,8 +628,8 @@ def test_dssm():
     dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode='DebugMode')
     
     
-    ywcost = dssm.output_train_test(dssm_input_Q, dssm_input_D)
-    ywtest = theano.function([dssm_input_Q, dssm_input_D], ywcost, mode='DebugMode')
+    ywcost = dssm.output_train_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost, mode='DebugMode')
     
     # Keep track of the number of training iterations performed
     iteration = 0
@@ -647,8 +652,11 @@ def test_dssm():
 #        print iteration, current_cost
 #        current_output = dssm_output(indexes[2], indexes[3], X, X)
 #        current_output = dssm_output(indexes[2], indexes[3], X, X1)
-#        current_output = ywtest(indexes[0], indexes[1], X, X1)
-        current_output = ywtest(X, X1)
+        print "indexes[0] = ", indexes[0]
+        print "indexes[1] = ", indexes[1]
+        
+        current_output = ywtest(indexes[0], indexes[1], X, X1)
+#        current_output = ywtest(X, X1)
         print current_output
   
               
