@@ -1,10 +1,15 @@
 import numpy as np
 import numpy
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import theano
 # By convention, the tensor submodule is loaded as T
 import theano.tensor as T
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+    
 functionmode = 'DebugMode'
 functionmode = 'FAST_RUN'
 
@@ -142,6 +147,94 @@ class CosineLayer(object):
         self.n_shift = n_shift
 
 
+
+
+class Minibatch(object):
+    def __init__(self, SegSize, ElementSize, SampleIdx, SegIdx, FeaIdx, FeaVal):
+        '''
+        An instance of a single minibatch
+        All parameters are with the same names as those in WordHash
+
+        '''
+        
+        self.SegSize = SegSize # int scalar
+        self.ElementSize = ElementSize # int scalar
+        
+        self.m_rgSampleIdx = SampleIdx # an array of int
+        self.m_rgSegIdx = SegIdx # an array of int
+        self.m_rgFeaIdx = FeaIdx # an array of int
+        self.m_rgFeaVal = FeaVal # an array of float
+
+class InputStream(object):
+#    def __init__(self, nMaxFeatureId, nLine, nMaxSegmentSize, nMaxFeatureNum, BatchSize):
+    def __init__(self, c):
+        self.nMaxFeatureId =  c[0] # nMaxFeatureId
+        self.nLine = c[1] # nLine
+        self.nMaxSegmentSize = c[2] #  nMaxSegmentSize
+        self.nMaxFeatureNum = c[3] # nMaxFeatureNum
+        self.BatchSize = c[4] # BatchSize
+        
+        if self.nLine % self.BatchSize == 0:
+            self.nTotalBatches = self.nLine / self.BatchSize
+        else:
+            self.nTotalBatches = self.nLine / self.BatchSize + 1
+        
+        self.minibatches = [] # initial with an empty list
+        
+    def display(self):
+        print self.nMaxFeatureId, self.nLine, self.nMaxSegmentSize, self.nMaxFeatureNum, self.BatchSize, self.nTotalBatches
+        for item in self.minibatches:
+            print item.SegSize, item.ElementSize, item.m_rgSampleIdx, item.m_rgSegIdx, item.m_rgFeaIdx, item.m_rgFeaVal
+            print "\n"# = SegSize # int scalar
+ 
+    def loadinoneminibatch(self, SegSize, ElementSize, SampleIdx, SegIdx, FeaIdx, FeaVal):
+        self.minibatches.append(Minibatch(SegSize, ElementSize, SampleIdx, SegIdx, FeaIdx, FeaVal))
+        
+    def loadinallminibatches(self, f):
+        f.seek(0) # move to the beginning
+        for i in range(self.nTotalBatches):
+            SegSize, ElementSize = np.fromfile(f, dtype=np.uint32, count=2)
+            SampleIdx = np.fromfile(f, dtype=np.uint32, count=SegSize)
+            SegIdx = np.fromfile(f, dtype=np.uint32, count=SegSize)
+            FeaIdx = np.fromfile(f, dtype=np.uint32, count=ElementSize)
+            FeaVal = np.fromfile(f, dtype=np.float32, count=ElementSize)
+            self.minibatches.append(Minibatch(SegSize, ElementSize, SampleIdx, SegIdx, FeaIdx, FeaVal))
+            
+    def setaminibatch(self, curr_minibatch, i):
+        '''
+        Set up current minibatch using self.minibatches[i]
+        minibatch is of Shape (inputstream1.BatchSize, inputstream1.nMaxFeatureId)
+        '''
+#        curr_minibatch[0,1] = 1
+#        return curr_minibatch
+        assert(i >= 0 and i < len(self.minibatches))
+
+        curr_minibatch.fill(0.0)
+        
+#        tmp_minibatch = self.minibatches[i]
+        segid = 0 # default value
+        
+        for j in range(self.minibatches[i].SegSize):
+            # Suppose the array is [2,5,7]
+            # Iter 1: segid = 0, segidx = 2, this means we are working on the 1st query (seg), its featureid from [0,2)
+            # Iter 2: segid = 1, segidx = 5, this means we are working on the 2nd query (seg), its featureid from [2,5)
+            # Iter 3: segid = 2, segidx = 7, this means we are working on the 3rd query (seg), its featureid from [5,7)
+            segidx = self.minibatches[i].m_rgSegIdx[j]
+            if j == 0:
+                prev_segidx = 0
+            else:
+                prev_segidx = self.minibatches[i].m_rgSegIdx[j-1]
+            
+            for k in range(prev_segidx, segidx):
+                feaid = self.minibatches[i].m_rgFeaIdx[k]
+                feaval = self.minibatches[i].m_rgFeaVal[k]
+                
+                curr_minibatch[segid, feaid] = feaval
+            
+            segid = segid +1
+            
+        
+               
 
 class Layer(object):
     def __init__(self, W_init, b_init, activation):
@@ -671,7 +764,218 @@ def test_dssm():
         # and computing the proportion of points whose class match the ground truth class.
         
         iteration += 1
+        
+
+def test_dssm_with_minibatch():
+    f = open("/home/yw/Downloads/test.2.bin", "rb")
+    g = open("/home/yw/Downloads/test.2.bin", "rb")
+    
+    # 1. get the last five numbers
+    # nMaxFeatureId, nLine, nMaxSegmentSize, nMaxFeatureNum, BatchSize
+    f.seek(-20, 2)
+    c = np.fromfile(f, dtype=np.uint32)
+    inputstream1 = InputStream(c)
+    
+    # 2. load in all minibatches into 
+    inputstream1.loadinallminibatches(f)
+#    inputstream1.display()
+
+    # 3. Get dimension of a minibatch
+    curr_minibatch1 = np.zeros((inputstream1.BatchSize, inputstream1.nMaxFeatureId), dtype = numpy.float32)
+#    print curr_minibatch
+
+    g.seek(-20, 2)
+    d = np.fromfile(g, dtype=np.uint32)
+    inputstream2 = InputStream(d)
+    inputstream2.loadinallminibatches(g)
+    curr_minibatch2 = np.zeros((inputstream2.BatchSize, inputstream2.nMaxFeatureId), dtype = numpy.float32)
+
+
+    
+#    inputstream1.setaminibatch(curr_minibatch, 0)
+
+#    print curr_minibatch
+    for i in range(inputstream1.nTotalBatches):
+        inputstream1.setaminibatch(curr_minibatch1, i)
+        inputstream2.setaminibatch(curr_minibatch2, i)
+        print 'i = %d' % (i)
+        print curr_minibatch1
+        print curr_minibatch2
+
+    # Training data - two randomly-generated Gaussian-distributed clouds of points in 2d space
+    np.random.seed(0)
+    
+    
+    # First, set the size of each layer (and the number of layers)
+    # Input layer size is training data dimensionality (2)
+    # Output size is just 1-d: class label - 0 or 1
+    # Finally, let the hidden layers be twice the size of the input.
+    # If we wanted more layers, we could just add another layer size to this list.
+    layer_sizes = [1765, 2]#, X.shape[1]*2]#, X.shape[1]*2, X.shape[1]*2]
+#    print "layer_sizes is as follows:"
+#    print layer_sizes
+    # Set initial parameter values
+    W_init = []
+    b_init = []
+    activations = []
+    for n_input, n_output in zip(layer_sizes[:-1], layer_sizes[1:]):
+        print "n_input,n_output = %d,%d" % (n_input, n_output)
+        # Getting the correct initialization matters a lot for non-toy problems.
+        # However, here we can just use the following initialization with success:
+        # Normally distribute initial weights
+        W_init.append(np.random.randn(n_input, n_output).astype(np.float32))
+    #    print W_init[-1].dtype
+        # Set initial biases to 1
+        b_init.append(np.ones(n_output).astype(np.float32))
+        # We'll use sigmoid activation for all layers
+        # Note that this doesn't make a ton of sense when using squared distance
+        # because the sigmoid function is bounded on [0, 1].
+#        activations.append(T.nnet.sigmoid)
+        activations.append(T.tanh)
+    # Create an instance of the MLP class
+    mbsize = inputstream1.BatchSize
+    neg = 1
+    shift = 1
+    indexes = generate_index(mbsize, neg, shift)
+#    print indexes
+#    print indexes[0].dtype
+    
+    dssm = DSSM(W_init, b_init, mbsize, neg, shift, activations)
+    
+    print "W_init is as follows:"
+    print W_init
+    
+    print "b_init is as follows:"
+    print b_init
+    
+    # Create Theano variables for the MLP input
+    dssm_index_Q = T.ivector('dssm_index_Q')
+    dssm_index_D = T.ivector('dssm_index_D')
+    dssm_input_Q = T.matrix('dssm_input_Q')
+    dssm_input_D = T.matrix('dssm_input_D')
+    # ... and the desired output
+#    mlp_target = T.col('mlp_target')
+    # Learning rate and momentum hyperparameter values
+    # Again, for non-toy problems these values can make a big difference
+    # as to whether the network (quickly) converges on a good local minimum.
+    learning_rate = 0.01
+    momentum = 0.9
+    # Create a function for computing the cost of the network given an input
+#    cost = mlp.squared_error(mlp_input, mlp_target)
+    cost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    cost_test = dssm.output_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+        
+    # Create a theano function for training the network
+    train = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost,
+                            updates=gradient_updates_momentum(cost, dssm.params, learning_rate, momentum), mode=functionmode)
+    # Create a theano function for computing the MLP's output given some input
+    dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode=functionmode)
+    
+    
+    ywcost = dssm.output_train_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
+    
+    # Keep track of the number of training iterations performed
+    iteration = 0
+    max_iteration = 25
+    while iteration < max_iteration:
+        # Train the network using the entire training set.
+        # With large datasets, it's much more common to use stochastic or mini-batch gradient descent
+        # where only a subset (or a single point) of the training set is used at each iteration.
+        # This can also help the network to avoid local minima.
+        
+        
+#        current_cost = train(X, y)
+        # Get the current network output for all points in the training set
+#        current_output = mlp_output(X)
+
+        print "Iteration %d--------------" % (iteration)
+        
+        
+#        current_cost = train(indexes[0], indexes[1], X, X)
+#        print iteration, current_cost
+#        current_output = dssm_output(indexes[2], indexes[3], X, X)
+#        current_output = dssm_output(indexes[2], indexes[3], X, X1)
+#        print "indexes[0] = ", indexes[0]
+#        print "indexes[1] = ", indexes[1]
+        
+  
+        for i in range(inputstream1.nTotalBatches):
+            inputstream1.setaminibatch(curr_minibatch1, i)
+            inputstream2.setaminibatch(curr_minibatch2, i)
+            
+            current_output = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
+    #        current_output = ywtest(X, X1)
+            print current_output
+            
+              
+        
+        
+        
+        # We can compute the accuracy by thresholding the output
+        # and computing the proportion of points whose class match the ground truth class.
+        
+        iteration += 1
+
+def test_file():
+    d = dict(name='Bob', age=20, score=88)
+    print d
+    f = open('dump.txt', 'wb')
+    pickle.dump(d, f)
+    f.close()
+    
+    f = open('dump.txt', 'rb')
+    e = pickle.load(f)
+    f.close()
+    print e
+
+def test_load_bin_file():
+    f = open("/home/yw/Downloads/test.2.bin", "rb")
+    g = open("/home/yw/Downloads/test.2.bin", "rb")
+    
+    # 1. get the last five numbers
+    # nMaxFeatureId, nLine, nMaxSegmentSize, nMaxFeatureNum, BatchSize
+    f.seek(-20, 2)
+    c = np.fromfile(f, dtype=np.uint32)
+    inputstream1 = InputStream(c)
+    
+    # 2. load in all minibatches into 
+    inputstream1.loadinallminibatches(f)
+#    inputstream1.display()
+
+    # 3. Get dimension of a minibatch
+    curr_minibatch1 = np.zeros((inputstream1.BatchSize, inputstream1.nMaxFeatureId), dtype = numpy.float32)
+#    print curr_minibatch
+
+    g.seek(-20, 2)
+    d = np.fromfile(g, dtype=np.uint32)
+    inputstream2 = InputStream(d)
+    inputstream2.loadinallminibatches(g)
+    curr_minibatch2 = np.zeros((inputstream2.BatchSize, inputstream2.nMaxFeatureId), dtype = numpy.float32)
+
+
+    
+#    inputstream1.setaminibatch(curr_minibatch, 0)
+
+#    print curr_minibatch
+    for i in range(inputstream1.nTotalBatches):
+        inputstream1.setaminibatch(curr_minibatch1, i)
+        inputstream2.setaminibatch(curr_minibatch2, i)
+        print 'i = %d' % (i)
+        print curr_minibatch1
+        print curr_minibatch2
+#    def setaminibatch(self, curr_minibatch, i):
+
+    
+    
+    
+
+    
 
 if __name__ == '__main__':
-    test_dssm()
+#    test_dssm()
+#    test_file()
+#    test_load_bin_file()    
+    test_dssm_with_minibatch()    
     print '----------------finished--------------------'
