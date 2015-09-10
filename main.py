@@ -299,6 +299,53 @@ class Layer(object):
         # Output is just linear mix if no activation function
         # Otherwise, apply the activation function
         return (lin_output if self.activation is None else self.activation(lin_output))
+    
+class LayerWithoutBias(object):
+    def __init__(self, W_init, activation):
+        '''
+        A layer of a neural network, computes s(Wx) where s is a nonlinearity and x is the input vector.
+
+        :parameters:
+            - W_init : np.ndarray, shape=(n_output, n_input)
+                Values to initialize the weight matrix to.
+            - activation : theano.tensor.elemwise.Elemwise
+                Activation function for layer output
+        '''
+        # Retrieve the input and output dimensionality based on W's initialization
+        n_input, n_output = W_init.shape
+        # All parameters should be shared variables.
+        # They're used in this class to compute the layer output,
+        # but are updated elsewhere when optimizing the network parameters.
+        # Note that we are explicitly requiring that W_init has the theano.config.floatX dtype
+        self.W = theano.shared(value=W_init.astype(theano.config.floatX),
+                               # The name parameter is solely for printing purporses
+                               name='W',
+                               # Setting borrow=True allows Theano to use user memory for this object.
+                               # It can make code slightly faster by avoiding a deep copy on construction.
+                               # For more details, see
+                               # http://deeplearning.net/software/theano/tutorial/aliasing.html
+                               borrow=True)
+        self.activation = activation
+        # We'll compute the gradient of the cost of the network with respect to the parameters in this list.
+        self.params = [self.W]
+        
+    def output(self, x):
+        '''
+        Compute this layer's output given an input
+        
+        :parameters:
+            - x : theano.tensor.var.TensorVariable
+                Theano symbolic variable for layer input
+
+        :returns:
+            - output : theano.tensor.var.TensorVariable
+                Mixed, biased, and activated x
+        '''
+        # Compute linear mix
+        lin_output = T.dot(x, self.W)
+        # Output is just linear mix if no activation function
+        # Otherwise, apply the activation function
+        return (lin_output if self.activation is None else self.activation(lin_output))
 
 class MLP(object):
     def __init__(self, W_init, b_init, activations):
@@ -362,7 +409,7 @@ class MLP(object):
         return T.sum((self.output(x) - y)**2)
 
 class DSSM(object):
-    def __init__(self, W_init, b_init, n_mbsize, n_neg, n_shift,  activations):
+    def __init__(self, W_init, n_mbsize, n_neg, n_shift,  activations, strategy = 0):
         '''
         This class is similar to MLP, except that we need to construct separate models for Q and D, 
         then add a cosine label at the end
@@ -371,31 +418,55 @@ class DSSM(object):
             - W_init : list of np.ndarray, len=N
                 Values to initialize the weight matrix in each layer to.
                 The layer sizes will be inferred from the shape of each matrix in W_init
-            - b_init : list of np.ndarray, len=N
-                Values to initialize the bias vector in each layer to
             - activations : list of theano.tensor.elemwise.Elemwise, len=N
                 Activation function for layer output for each layer
         '''
-        # Make sure the input lists are all of the same length
-        assert len(W_init) == len(b_init) == len(activations)
         
-        # Initialize lists of layers
-        self.layers_Q = []
-        self.layers_D = []
-        # Construct the layers
-        for W, b, activation in zip(W_init, b_init, activations):
-            self.layers_Q.append(Layer(W, b, activation))
-            self.layers_D.append(Layer(W, b, activation))
-        
-        self.layer_cosine = CosineLayer(n_mbsize, n_neg, n_shift)
-
-        # Combine parameters from all layers
-        self.params = []
-        for layer in self.layers_Q:
-            self.params += layer.params
-        for layer in self.layers_D:
-            self.params += layer.params
-        
+        if strategy == 0:
+            # Make sure the input lists are all of the same length
+            assert len(W_init)  == len(activations)
+            
+            # Initialize lists of layers
+            self.layers_Q = []
+            self.layers_D = []
+            # Construct the layers
+            for W, activation in zip(W_init, activations):
+                self.layers_Q.append(LayerWithoutBias(W, activation))
+                self.layers_D.append(LayerWithoutBias(W, activation))
+            
+            self.layer_cosine = CosineLayer(n_mbsize, n_neg, n_shift)
+    
+            # Combine parameters from all layers
+            self.params = []
+            for layer in self.layers_Q:
+                self.params += layer.params
+            for layer in self.layers_D:
+                self.params += layer.params
+        elif strategy == 1:
+            # Make sure the input lists are all of the same length
+            # In this case, the W_init is a list of trained weights, first half is from Q, 2nd half is from D
+            assert len(W_init)  == len(activations)*2
+            
+            # Initialize lists of layers
+            self.layers_Q = []
+            self.layers_D = []
+            halflen = len(activations)
+            
+            for W, activation in zip(W_init[0:halflen], activations):
+                self.layers_Q.append(LayerWithoutBias(W, activation))
+                
+            for W, activation in zip(W_init[halflen:], activations):
+                self.layers_D.append(LayerWithoutBias(W, activation))
+            
+            self.layer_cosine = CosineLayer(n_mbsize, n_neg, n_shift)
+    
+            # Combine parameters from all layers
+            self.params = []
+            for layer in self.layers_Q:
+                self.params += layer.params
+            for layer in self.layers_D:
+                self.params += layer.params
+            
     def output_train(self, index_Q, index_D, Q, D):
         '''
         Compute the DSSM's output given an input
@@ -816,7 +887,7 @@ def test_dssm_with_minibatch():
 #    print layer_sizes
     # Set initial parameter values
     W_init = []
-    b_init = []
+#    b_init = []
     activations = []
     for n_input, n_output in zip(layer_sizes[:-1], layer_sizes[1:]):
         print "n_input,n_output = %d,%d" % (n_input, n_output)
@@ -826,7 +897,7 @@ def test_dssm_with_minibatch():
         W_init.append(np.random.randn(n_input, n_output).astype(np.float32))
     #    print W_init[-1].dtype
         # Set initial biases to 1
-        b_init.append(np.ones(n_output).astype(np.float32))
+ #       b_init.append(np.ones(n_output).astype(np.float32))
         # We'll use sigmoid activation for all layers
         # Note that this doesn't make a ton of sense when using squared distance
         # because the sigmoid function is bounded on [0, 1].
@@ -840,13 +911,13 @@ def test_dssm_with_minibatch():
 #    print indexes
 #    print indexes[0].dtype
     
-    dssm = DSSM(W_init, b_init, mbsize, neg, shift, activations)
+    dssm = DSSM(W_init, mbsize, neg, shift, activations)
     
     print "W_init is as follows:"
     print W_init
     
-    print "b_init is as follows:"
-    print b_init
+#    print "b_init is as follows:"
+#    print b_init
     
     # Create Theano variables for the MLP input
     dssm_index_Q = T.ivector('dssm_index_Q')
@@ -878,57 +949,159 @@ def test_dssm_with_minibatch():
     
     # Keep track of the number of training iterations performed
     iteration = 0
-    max_iteration = 25
+    max_iteration = 3
     while iteration < max_iteration:
-        # Train the network using the entire training set.
-        # With large datasets, it's much more common to use stochastic or mini-batch gradient descent
-        # where only a subset (or a single point) of the training set is used at each iteration.
-        # This can also help the network to avoid local minima.
-        
-        
-#        current_cost = train(X, y)
-        # Get the current network output for all points in the training set
-#        current_output = mlp_output(X)
-
         print "Iteration %d--------------" % (iteration)
-        
-        
-#        current_cost = train(indexes[0], indexes[1], X, X)
-#        print iteration, current_cost
-#        current_output = dssm_output(indexes[2], indexes[3], X, X)
-#        current_output = dssm_output(indexes[2], indexes[3], X, X1)
-#        print "indexes[0] = ", indexes[0]
-#        print "indexes[1] = ", indexes[1]
-        
   
         for i in range(inputstream1.nTotalBatches):
             inputstream1.setaminibatch(curr_minibatch1, i)
             inputstream2.setaminibatch(curr_minibatch2, i)
             
             current_output = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
-    #        current_output = ywtest(X, X1)
             print current_output
-            
-              
         
-        
-        
-        # We can compute the accuracy by thresholding the output
-        # and computing the proportion of points whose class match the ground truth class.
+        # dump out current model
+        h = open("/home/yw/Downloads/dssm_%d" % (iteration), "wb")
+        pickle.dump(len(dssm.params), h)
+        for W in dssm.params:
+            pickle.dump(W.get_value(), h)
+            print W.get_value()
+        h.close()
         
         iteration += 1
 
-def test_file():
-    d = dict(name='Bob', age=20, score=88)
-    print d
-    f = open('dump.txt', 'wb')
-    pickle.dump(d, f)
+    
+def test_dssm_with_minibatch_prediction():
+    f = open("/home/yw/Downloads/test.2.bin", "rb")
+    g = open("/home/yw/Downloads/test.2.bin", "rb")
+    
+    # 1. get the last five numbers
+    # nMaxFeatureId, nLine, nMaxSegmentSize, nMaxFeatureNum, BatchSize
+    f.seek(-20, 2)
+    c = np.fromfile(f, dtype=np.uint32)
+    inputstream1 = InputStream(c)
+    
+    # 2. load in all minibatches into 
+    inputstream1.loadinallminibatches(f)
+#    inputstream1.display()
+
+    # 3. Get dimension of a minibatch
+    curr_minibatch1 = np.zeros((inputstream1.BatchSize, inputstream1.nMaxFeatureId), dtype = numpy.float32)
+#    print curr_minibatch
+
+    g.seek(-20, 2)
+    d = np.fromfile(g, dtype=np.uint32)
+    inputstream2 = InputStream(d)
+    inputstream2.loadinallminibatches(g)
+    curr_minibatch2 = np.zeros((inputstream2.BatchSize, inputstream2.nMaxFeatureId), dtype = numpy.float32)
+
+    # Training data - two randomly-generated Gaussian-distributed clouds of points in 2d space
+    np.random.seed(0)
+    
+    
+    layer_sizes = [1765, 2]#, X.shape[1]*2]#, X.shape[1]*2, X.shape[1]*2]
+    W_init = []
+    
+    z = open('/home/yw/Downloads/dssm_0', 'rb')
+    e = pickle.load(z)
+    b1 = pickle.load(z)
+    b2 = pickle.load(z)
+    W_init = [b1, b2]
+    z.close()
+
+#    b_init = []
+    activations = []
+    for n_input, n_output in zip(layer_sizes[:-1], layer_sizes[1:]):
+        activations.append(T.tanh)
+    # Create an instance of the MLP class
+    mbsize = inputstream1.BatchSize
+    neg = 1
+    shift = 1
+    indexes = generate_index(mbsize, neg, shift)
+#    print indexes
+#    print indexes[0].dtype
+    
+    dssm = DSSM(W_init, mbsize, neg, shift, activations, 1)
+    
+    print "W_init is as follows:"
+    print W_init
+    
+#    print "b_init is as follows:"
+#    print b_init
+    
+    # Create Theano variables for the MLP input
+    dssm_index_Q = T.ivector('dssm_index_Q')
+    dssm_index_D = T.ivector('dssm_index_D')
+    dssm_input_Q = T.matrix('dssm_input_Q')
+    dssm_input_D = T.matrix('dssm_input_D')
+    # ... and the desired output
+#    mlp_target = T.col('mlp_target')
+    # Learning rate and momentum hyperparameter values
+    # Again, for non-toy problems these values can make a big difference
+    # as to whether the network (quickly) converges on a good local minimum.
+    learning_rate = 0.01
+    momentum = 0.9
+    # Create a function for computing the cost of the network given an input
+#    cost = mlp.squared_error(mlp_input, mlp_target)
+    cost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    # Create a theano function for training the network
+    train = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost,
+                            updates=gradient_updates_momentum(cost, dssm.params, learning_rate, momentum), mode=functionmode)
+
+    
+    
+    cost_test = dssm.output_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode=functionmode)
+    
+    
+    ywcost = dssm.output_train_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
+    
+    # Keep track of the number of training iterations performed
+    for i in range(inputstream1.nTotalBatches):
+        inputstream1.setaminibatch(curr_minibatch1, i)
+        inputstream2.setaminibatch(curr_minibatch2, i)
+        
+        current_output = dssm_output(indexes[2], indexes[3], curr_minibatch1, curr_minibatch2)
+        print current_output
+        
+    
+    
+def test_file1():
+    f = open('/home/yw/Downloads/dssm_1', 'rb')
+    e = pickle.load(f)
+    b1 = pickle.load(f)
+    b2 = pickle.load(f)
+
+    print e, b1, b2
+    
     f.close()
     
-    f = open('dump.txt', 'rb')
-    e = pickle.load(f)
+def test_file():
+    d = dict(name='Bob', age=20, score=88)
+    a1 = np.zeros((3,5), dtype=np.int8)
+    a2 = np.zeros((4,4), dtype=np.float32)
+    a3 = np.ones((2,2), dtype=np.float32)
+    
+#    print d, a1, a2, a3
+    f = open('/home/yw/Downloads/dump.txt', 'wb')
+    pickle.dump(d, f)
+    pickle.dump(a1, f)
+    pickle.dump(a2, f)
+    pickle.dump(a3, f)
     f.close()
-    print e
+    
+    f = open('/home/yw/Downloads/dump.txt', 'rb')
+    e = pickle.load(f)
+    b1 = pickle.load(f)
+    b2 = pickle.load(f)
+    b3 = pickle.load(f)
+    
+    f.close()
+    print e, b1, b2, b3
+
+    
 
 def test_load_bin_file():
     f = open("/home/yw/Downloads/test.2.bin", "rb")
@@ -975,7 +1148,8 @@ def test_load_bin_file():
 
 if __name__ == '__main__':
 #    test_dssm()
-#    test_file()
+#    test_file1()
+    test_dssm_with_minibatch_prediction()
 #    test_load_bin_file()    
-    test_dssm_with_minibatch()    
+#    test_dssm_with_minibatch()    
     print '----------------finished--------------------'
