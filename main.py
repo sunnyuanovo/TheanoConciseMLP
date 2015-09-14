@@ -711,15 +711,17 @@ if __name__ == '__main__':
 #    test_file1()
 #    test_dssm_with_minibatch_prediction()
 #    test_load_bin_file()    
-    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
-    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
+#    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
+#    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
+    basedir_data = "./Dataset/toy03"
+    basedir_initmodel = "./Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
     bin_file_train_1 = "%s/train.1.src.seq.bin" % (basedir_data)
     bin_file_train_2 = "%s/train.1.tgt.seq.bin" % (basedir_data)
     bin_file_test_1 = "%s/valid.1.src.seq.bin" % (basedir_data)
     bin_file_test_2 = "%s/valid.1.tgt.seq.bin" % (basedir_data)
     dssm_file_1 = "%s/DSSM_QUERY_ITER0" % (basedir_initmodel)
     dssm_file_2 = "%s/DSSM_DOC_ITER0" % (basedir_initmodel)
-    outputdir = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/yw.train"
+    outputdir = "./Experiments/toy03/WebSearch/yw.train"
     ntrial = 1
     shift = 1
     max_iteration = 5
