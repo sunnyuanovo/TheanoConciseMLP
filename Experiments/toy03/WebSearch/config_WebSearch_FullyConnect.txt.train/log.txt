@@ -1,0 +1,134 @@
+Loading doc Query Stream ....
+Loading pair training data : train.1.src.seq.bin and train.1.tgt.seq.bin
+loading Training doc query stream done : 00:00:00.1623866
+loading Validate doc query stream done : 00:00:00.0024163
+Source Neural Network Structure Neural Layer 0: 5
+Neural Layer 1: 2
+layer 0 to layer 1: AF Type : Tanh; hid bias : 0; weight sigma : 0.6; Neural Type : Fully_Connected; Window Size : 1;
+
+Target Neural Network Structure Neural Layer 0: 5
+Neural Layer 1: 2
+layer 0 to layer 1: AF Type : Tanh; hid bias : 0; weight sigma : 0.6; Neural Type : Fully_Connected; Window Size : 1;
+
+Feature Num Query 5
+Feature Num Doc 5
+Sharing Model False
+Mirror Init Model False
+Math Lib gpu
+Starting DNN Learning!
+Initialization (Iter 0)
+Saving models ...
+Saving validation prediction scores ... 
+Calling external validation process ... 
+Reading validation objective metric  ... 
+Validation file content :
+	0.42062
+	NDCG[1]=0.000000
+	NDCG[3]=0.630930
+	NDCG[10]=0.630930
+Dataset VALIDATION :
+/*******************************/ 
+0.42062 
+/*******************************/ 
+
+total query sample number : 4
+total doc sample number : 4
+Training batches: 2
+Learning Objective : MMI
+Start Training
+-----------------------------------------------------------
+ITER : 1
+Training Loss : 1.513615
+Learning Rate : 0.1
+Saving models ...
+Saving validation prediction scores ... 
+Calling external validation process ... 
+Reading validation objective metric  ... 
+Validation file content :
+	0.42062
+	NDCG[1]=0.000000
+	NDCG[3]=0.630930
+	NDCG[10]=0.630930
+Dataset VALIDATION :
+/*******************************/ 
+0.42062 
+/*******************************/ 
+
+Training Runing Time : 00:00:00.5201860
+-----------------------------------------------------------
+ITER : 2
+Training Loss : 1.442577
+Learning Rate : 0.1
+Saving models ...
+Saving validation prediction scores ... 
+Calling external validation process ... 
+Reading validation objective metric  ... 
+Validation file content :
+	0.42062
+	NDCG[1]=0.000000
+	NDCG[3]=0.630930
+	NDCG[10]=0.630930
+Dataset VALIDATION :
+/*******************************/ 
+0.42062 
+/*******************************/ 
+
+Training Runing Time : 00:00:00.4956503
+-----------------------------------------------------------
+ITER : 3
+Training Loss : 1.420207
+Learning Rate : 0.1
+Saving models ...
+Saving validation prediction scores ... 
+Calling external validation process ... 
+Reading validation objective metric  ... 
+Validation file content :
+	0.42062
+	NDCG[1]=0.000000
+	NDCG[3]=0.630930
+	NDCG[10]=0.630930
+Dataset VALIDATION :
+/*******************************/ 
+0.42062 
+/*******************************/ 
+
+Training Runing Time : 00:00:00.4966862
+-----------------------------------------------------------
+ITER : 4
+Training Loss : 1.398244
+Learning Rate : 0.1
+Saving models ...
+Saving validation prediction scores ... 
+Calling external validation process ... 
+Reading validation objective metric  ... 
+Validation file content :
+	0.42062
+	NDCG[1]=0.000000
+	NDCG[3]=0.630930
+	NDCG[10]=0.630930
+Dataset VALIDATION :
+/*******************************/ 
+0.42062 
+/*******************************/ 
+
+Training Runing Time : 00:00:00.5468506
+-----------------------------------------------------------
+ITER : 5
+Training Loss : 1.369663
+Learning Rate : 0.1
+Saving models ...
+Saving validation prediction scores ... 
+Calling external validation process ... 
+Reading validation objective metric  ... 
+Validation file content :
+	0.42062
+	NDCG[1]=0.000000
+	NDCG[3]=0.630930
+	NDCG[10]=0.630930
+Dataset VALIDATION :
+/*******************************/ 
+0.42062 
+/*******************************/ 
+
+Training Runing Time : 00:00:00.5117245
+-----------------------------------------------------------

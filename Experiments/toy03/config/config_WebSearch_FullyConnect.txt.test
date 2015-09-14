@@ -1,0 +1,32 @@
+QFILE	..\..\Dataset\toy03\train.1.src.seq.bin
+DFILE	..\..\Dataset\toy03\train.1.tgt.seq.bin
+SEEDMODEL1	WebSearch\config_WebSearch_FullyConnect.txt.train\DSSM_QUERY_ITER5
+SEEDMODEL2	WebSearch\config_WebSearch_FullyConnect.txt.train\DSSM_DOC_ITER5
+LOGFILE	WebSearch\config_WebSearch_FullyConnect.txt.test\log.txt
+MODELPATH	WebSearch\config_WebSearch_FullyConnect.txt.test\DSSM
+VALIDATEQFILE	..\..\Dataset\toy03\train.1.src.seq.bin
+VALIDATEDFILE	..\..\Dataset\toy03\train.1.tgt.seq.bin
+VALIDATEPAIR	..\..\Dataset\toy03\valid.4.unix
+VALIDATEPROCESS	C:\telsa01\EvaluationToolkit\yw_valid_eval_NDCG.bat
+BATCHSIZE	2
+NTRIAL	1
+MAX_ITER	0
+PARM_GAMMA	10
+TRAIN_TEST_RATE	1
+LEARNINGRATE	0.1
+SOURCE_LAYER_DIM	2
+SOURCE_LAYERWEIGHT_SIGMA	0.6
+SOURCE_ACTIVATION	1	#0: Linear   1: Tanh    2: rectified 
+SOURCE_ARCH	0	#0: Fully Connected	1: Convolutional
+SOURCE_ARCH_WIND	1
+TARGET_LAYER_DIM	2
+TARGET_LAYERWEIGHT_SIGMA	0.6
+TARGET_ACTIVATION	1
+TARGET_ARCH	0
+TARGET_ARCH_WIND	1
+MIRROR_INIT	0	# 0:false 1:true
+DEVICE	1
+REJECT_RATE	1.0
+DOWN_RATE	1.0
+ACCEPT_RANGE	1.0
+NOTRAIN	1

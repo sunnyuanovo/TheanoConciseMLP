@@ -1,0 +1,12 @@
+Loading doc Query Stream ....
+Loading pair training data : train.1.src.seq.bin and train.1.tgt.seq.bin
+loading Training doc query stream done : 00:00:00.1322627
+loading Validate doc query stream done : 00:00:00.0018784
+Loading doc Query Stream ....
+Loading pair training data : train.1.src.seq.bin and train.1.tgt.seq.bin
+loading Training doc query stream done : 00:00:00.1813700
+loading Validate doc query stream done : 00:00:00.0018123
+Loading doc Query Stream ....
+Loading pair training data : train.1.src.seq.bin and train.1.tgt.seq.bin
+loading Training doc query stream done : 00:00:00.1694173
+loading Validate doc query stream done : 00:00:00.0018923
