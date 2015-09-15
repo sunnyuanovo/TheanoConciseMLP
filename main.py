@@ -306,7 +306,7 @@ class DSSM(object):
                 Theano symbolic variable for layer input
 
         :returns:
-            - output : theano.tensor.var.TensorVariable, should be a tensor scalar
+            - output : theano.tensor.var.TensorVariable, should be a tensor scalar, which serves as the train loss
                 A scalar value
         '''
         # Recursively compute output
@@ -316,7 +316,7 @@ class DSSM(object):
             D = layer.output(D)
 #        return Q, D
         
-        cosine_matrix = self.layer_cosine.output(index_Q, index_D, Q, D) * 10
+        cosine_matrix = self.layer_cosine.output(index_Q, index_D, Q, D) * 10 # scaling by 10 is suggested by Jianfeng Gao
     
         cosine_matrix_reshape = T.reshape(cosine_matrix, (self.layer_cosine.n_mbsize, self.layer_cosine.n_neg+1))
         
@@ -324,11 +324,13 @@ class DSSM(object):
         cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix_reshape)
 #        return cosine_matrix_reshape_softmax
         
-        # get the first column
+        # get the first column, i.e. the column of positive pairs (Q,D)
         column1 = cosine_matrix_reshape_softmax[:,0]
         
         column1_neglog = -T.log(column1)
+
         return column1_neglog.sum()
+#        return column1_neglog
         
         # get the final output
 #        return  (-1 * column1.sum())
@@ -344,7 +346,7 @@ class DSSM(object):
                 Theano symbolic variable for layer input
 
         :returns:
-            - output : theano.tensor.var.TensorVariable, should be a tensor vector
+            - output : theano.tensor.var.TensorVariable, should be a tensor column vector
         '''
         # Recursively compute output
         for layer in self.layers_Q:
@@ -461,11 +463,19 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
     dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode=functionmode)
     
     """
+    """
     ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
     ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
                              updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
-    
+    """
+    ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+#    ywcost_scalar = ywcost.sum()
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
     # Keep track of the number of training iterations performed
+    grad_ywcost = theano.grad(ywcost, dssm.params)
+    grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
+ 
     
     
     iteration = 1
@@ -486,11 +496,15 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 
         # we scan all minibatches, except the last one  
         for i in range(usefulbatches):
+            print "Processing batch no %d\n" % (i)
+            
             inputstream1.setaminibatch(curr_minibatch1, i)
             inputstream2.setaminibatch(curr_minibatch2, i)
-            
+
+#            grad_current_output =  grad_ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)           
             current_output = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
-            print "batch no %d, %f\n" % (i, current_output)
+#            print "batch no %d, %f\n" % (i, current_output)
+#           print current_output
             trainLoss += current_output
 
         print "all batches in this iteraton is processed"
@@ -516,6 +530,191 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 
     print "-----The whole train process is finished-------\n"
     
+def train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration):
+    # 1. Load in the input streams
+    # Suppose the max seen feaid in the stream is 48930
+    # then, inputstream1.nMaxFeatureId is 48931, which is one more
+    # Ideally, the num_cols should be 48931
+    # However, to make it conpatible with MS DSSM toolkit, we add it by one
+    inputstream1 = InputStream(bin_file_train_1) # this will load in the whole file as origin. No modification at all
+    inputstream2 = InputStream(bin_file_train_2)
+    
+
+    # 2. Load in the network structure and initial weights from DSSM
+    init_model_1 = load_simpledssmmodel(dssm_file_1_simple)
+    activations_1 = [T.tanh] * init_model_1.mlink_num
+    
+    init_model_2 = load_simpledssmmodel(dssm_file_2_simple)
+    activations_2 = [T.tanh] * init_model_2.mlink_num
+
+    # Before iteration, dump out the init model 
+    outfilename_1 = os.path.join(outputdir, "yw_dssm_Q_0")
+    outfilename_2 = os.path.join(outputdir, "yw_dssm_D_0")
+    save_simpledssmmodel(outfilename_1, init_model_1)
+    save_simpledssmmodel(outfilename_2, init_model_2)
+    
+
+
+    
+    # 3. Generate useful index structures
+    # We assue that each minibatch is of the same size, i.e. mbsize
+    # if the last batch has fewer samples, just ignore it
+    mbsize = inputstream1.BatchSize
+    indexes = generate_index(mbsize, ntrial, shift) # for a normal minibatch, we should use this indexes
+#    indexes_lastone = generate_index(inputstream1.minibatches[-1].SegSize, ntrial, shift) # this is used for the last batch
+
+    # 4. Generate an instance of DSSM    
+    dssm = DSSM(init_model_1.params, activations_1, init_model_2.params, activations_2, mbsize, ntrial, shift )
+
+    # Create Theano variables for the MLP input
+    dssm_index_Q = T.ivector('dssm_index_Q')
+    dssm_index_D = T.ivector('dssm_index_D')
+    dssm_input_Q = T.matrix('dssm_input_Q')
+    dssm_input_D = T.matrix('dssm_input_D')
+    # ... and the desired output
+#    mlp_target = T.col('mlp_target')
+    # Learning rate and momentum hyperparameter values
+    # Again, for non-toy problems these values can make a big difference
+    # as to whether the network (quickly) converges on a good local minimum.
+    learning_rate = 0.1
+    momentum = 0.0
+    # Create a function for computing the cost of the network given an input
+    
+    """
+#    cost = mlp.squared_error(mlp_input, mlp_target)
+    cost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    cost_test = dssm.output_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+        
+    # Create a theano function for training the network
+    train = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost,
+                            updates=gradient_updates_momentum(cost, dssm.params, learning_rate, momentum), mode=functionmode)
+    # Create a theano function for computing the MLP's output given some input
+    dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode=functionmode)
+    
+    """
+    """
+    ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
+    """
+    ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+    grad_ywcost = theano.grad(ywcost, dssm.params)
+    
+    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost, mode=functionmode)
+    grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
+    # Keep track of the number of training iterations performed
+ 
+    
+    
+    iteration = 1
+    while iteration <= max_iteration:
+        print "Iteration %d--------------" % (iteration)
+        print "Each iteration contains %d minibatches" % (inputstream1.nTotalBatches)
+        
+        trainLoss = 0.0
+
+        if inputstream1.BatchSize == inputstream1.minibatches[-1].SegSize:
+            usefulbatches = inputstream1.nTotalBatches
+        else:
+            usefulbatches = inputstream1.nTotalBatches -1
+        print "After removing the last incomplete batch, we need to process %d batches" % (usefulbatches)
+
+        curr_minibatch1 = np.zeros((inputstream1.BatchSize, init_model_1.in_num_list[0]), dtype = numpy.float32)
+        curr_minibatch2 = np.zeros((inputstream2.BatchSize, init_model_2.in_num_list[0]), dtype = numpy.float32)
+
+        # we scan all minibatches, except the last one  
+        for i in range(usefulbatches):
+            inputstream1.setaminibatch(curr_minibatch1, i)
+            inputstream2.setaminibatch(curr_minibatch2, i)
+            
+            current_output = grad_ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
+#            print "batch no %d, %f\n" % (i, current_output)
+            print "batch no %d\n" % (i)
+            """
+            for tmp_output in current_output:
+                tmp_list = []
+                for m in range(5):
+                    for n in range(2):
+                        tmp_list.append(tmp_output[m,n])
+                print tmp_list
+            """
+#            print current_output
+#            trainLoss += current_output
+            for k in range(len(dssm.params)):
+                base_w = dssm.params[k].get_value() # get current weights
+                base_w_new = base_w - 0.1*current_output[k]
+                dssm.params[k].set_value(base_w_new)
+                print base_w
+                print current_output[k]
+                print base_w_new
+
+            """
+            # Next, we need to manually compute gradient
+            for k in range(len(dssm.params)):
+                base_w = dssm.params[k].get_value()
+                grad_base_w = base_w.copy()
+                eps = 0.0001
+                
+                for x in range(5):
+                    for y in range(2):
+                        base_w_plus = base_w.copy()
+                        base_w_plus[x,y] += eps
+                        base_w_neg = base_w.copy()
+                        base_w_neg[x,y] -= eps
+
+                        dssm.params[k].set_value(base_w_plus)
+                        current_output_plus = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
+                        dssm.params[k].set_value(base_w_neg)
+                        current_output_neg = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
+                        final_grad = (current_output_plus-current_output_neg)/(2*eps)
+                        grad_base_w[x,y] = final_grad
+#                print grad_base_w.tolist()
+                # first, dump out the theano.grad result
+                tmp_list = []
+                for m in range(5):
+                    for n in range(2):
+                        tmp_list.append(current_output[k][m,n])
+                print tmp_list
+
+                
+                
+                tmp_list = []
+                for m in range(5):
+                    for n in range(2):
+                        tmp_list.append(grad_base_w[m,n])
+                print tmp_list
+                dssm.params[k].set_value(base_w)
+            """
+                        
+            """                        
+            (x,y) = (0,0)
+            base_WQ = dssm.params_Q[0].get_value()
+            base_WQ_Plus = base_WQ.copy()
+            base_WQ_Plus[x,y] += eps
+            base_WQ_Neg = base_WQ.copy()
+            base_WQ_Neg[x,y] -= eps
+            """
+            
+            # compute plus
+
+            # set back the original weight            
+#            dssm.params_Q[0].set_value(base_WQ)
+            
+            
+            
+            
+
+        print "all batches in this iteraton is processed"
+        print "trainLoss = %f" % (trainLoss)
+                     
+        print "Iteration %d-------------- is finished" % (iteration)
+        
+        iteration += 1
+
+    print "-----The whole train process is finished-------\n"
+    
+
+
 def train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_simple, dssm_file_2_simple, outputfilename):
     
     # 0. open the outputfile
@@ -713,25 +912,26 @@ if __name__ == '__main__':
 #    test_load_bin_file()    
 #    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
 #    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
-    basedir_data = "./Dataset/toy03"
-    basedir_initmodel = "./Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
-    bin_file_train_1 = "%s/train.1.src.seq.bin" % (basedir_data)
-    bin_file_train_2 = "%s/train.1.tgt.seq.bin" % (basedir_data)
-    bin_file_test_1 = "%s/valid.1.src.seq.bin" % (basedir_data)
-    bin_file_test_2 = "%s/valid.1.tgt.seq.bin" % (basedir_data)
+    basedir_data = "./Dataset/train_10K_test_1K/WebSearch"
+    basedir_initmodel = "./Experiments/toy05/WebSearch/config_WebSearch_FullyConnect.txt.train"
+    bin_file_train_1 = "%s/train.1.src.seq.fea.bin" % (basedir_data)
+    bin_file_train_2 = "%s/train.1.tgt.seq.fea.bin" % (basedir_data)
+    bin_file_test_1 = "%s/valid.1.src.seq.fea.bin" % (basedir_data)
+    bin_file_test_2 = "%s/valid.1.tgt.seq.fea.bin" % (basedir_data)
     dssm_file_1 = "%s/DSSM_QUERY_ITER0" % (basedir_initmodel)
     dssm_file_2 = "%s/DSSM_DOC_ITER0" % (basedir_initmodel)
-    outputdir = "./Experiments/toy03/WebSearch/yw.train"
-    ntrial = 1
+    outputdir = "./Experiments/toy05/WebSearch/yw.train"
+    
+    # parameters should be consistent with the dssm config file
+    ntrial = 50
     shift = 1
     max_iteration = 5
 
     dssm_file_1_simple = "%s_simple" % (dssm_file_1)
     dssm_file_2_simple = "%s_simple" % (dssm_file_2)
 
-    """
     # the following loop is convert the original dssm model to simple format
-    for i in range(-1):    
+    for i in range(1):    
         dssm_file_1 = "%s/DSSM_QUERY_ITER%d" % (basedir_initmodel, i)
         dssm_file_1_simple = "%s_simple" % (dssm_file_1)
         convert_microsoftdssmmodel(dssm_file_1, dssm_file_1_simple)
@@ -744,6 +944,7 @@ if __name__ == '__main__':
 #        dssm_file_2_simple = "%s_simple" % (dssm_file_2)
 #        convert_microsoftdssmmodel(dssm_file_2, dssm_file_2_simple)
     
+    """
 
     # the following loop is to conduct prediction using dssm model (simple version)
     for i in range(-1):#    i = 0
@@ -760,17 +961,18 @@ if __name__ == '__main__':
     if not os.path.exists(outputdir):
         os.makedirs(outputdir)
         
-    train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
+#    train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
+#    train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
 
-    sys.exit(0)
+#    sys.exit(0)
 
-    for i in range(1, 6):
+    for i in range(max_iteration+1):
         dssm_file_1_predict = "%s/yw_dssm_Q_%d" % (outputdir, i)
         dssm_file_2_predict = "%s/yw_dssm_D_%d" % (outputdir, i)
 #        outputfilename = "%s/yw_dssm_Q_%d_prediction" % (outputdir, i)
         outputfilename = "%s_prediction" % (dssm_file_1_predict)
     
-        train_dssm_with_minibatch_predictiononly(bin_file_train_1, bin_file_train_2, dssm_file_1_predict, dssm_file_2_predict, outputfilename)
+        train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, outputfilename)
 
 
     print '----------------finished--------------------'
