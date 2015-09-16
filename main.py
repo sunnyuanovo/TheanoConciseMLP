@@ -360,7 +360,7 @@ class DSSM(object):
         return cosine_matrix_reshape
 
 
-def gradient_updates_momentum(cost, params, learning_rate, momentum):
+def gradient_updates_momentum(cost, params, learning_rate, momentum, mbsize):
     '''
     Compute updates for gradient descent with momentum
     
@@ -398,7 +398,7 @@ def gradient_updates_momentum(cost, params, learning_rate, momentum):
         """
 #        param_update = theano.shared(param.get_value()*0., broadcastable=param.broadcastable)
 #        updates.append((param_update, T.grad(cost, param)))
-        updates.append((param, param - learning_rate*theano.grad(cost, param)))
+        updates.append((param, param - (learning_rate*theano.grad(cost, param) / mbsize)))
     return updates
 
 def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration):
@@ -471,7 +471,7 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
     ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
 #    ywcost_scalar = ywcost.sum()
     ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
-                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
+                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum, mbsize), mode=functionmode)
     # Keep track of the number of training iterations performed
     grad_ywcost = theano.grad(ywcost, dssm.params)
     grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
@@ -628,6 +628,7 @@ def train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2,
             inputstream2.setaminibatch(curr_minibatch2, i)
             
             current_output = grad_ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
+#            current_output /= (-2)
 #            print "batch no %d, %f\n" % (i, current_output)
             print "batch no %d\n" % (i)
             """
@@ -715,10 +716,11 @@ def train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2,
     
 
 
-def train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_simple, dssm_file_2_simple, outputfilename):
+def train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_simple, dssm_file_2_simple, labelfilename, outputfilename):
     
     # 0. open the outputfile
     outfile = open(outputfilename, 'w')
+    labelfile = open(labelfilename, 'r')
     
     # 1. Load in the input streams
     # Suppose the max seen feaid in the stream is 48930
@@ -780,41 +782,45 @@ def train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, d
     # Keep track of the number of training iterations performed
     
     
-    iteration = 0
-    while iteration < 1:
 #        print "Iteration %d--------------" % (iteration)
-        print "Each iteration contains totally %d minibatches" % (inputstream1.nTotalBatches)
+    print "This prediction contains totally %d minibatches" % (inputstream1.nTotalBatches)
 
-        curr_minibatch1 = np.zeros((inputstream1.BatchSize, init_model_1.in_num_list[0]), dtype = numpy.float32)
-        curr_minibatch2 = np.zeros((inputstream2.BatchSize, init_model_2.in_num_list[0]), dtype = numpy.float32)
+    curr_minibatch1 = np.zeros((inputstream1.BatchSize, init_model_1.in_num_list[0]), dtype = numpy.float32)
+    curr_minibatch2 = np.zeros((inputstream2.BatchSize, init_model_2.in_num_list[0]), dtype = numpy.float32)
 
-        result = []
+    result = []
+    
+    # we scan all minibatches  
+    for i in range(inputstream1.nTotalBatches):
+        inputstream1.setaminibatch(curr_minibatch1, i)
+        inputstream2.setaminibatch(curr_minibatch2, i)
         
-        # we scan all minibatches  
-        for i in range(inputstream1.nTotalBatches):
-            inputstream1.setaminibatch(curr_minibatch1, i)
-            inputstream2.setaminibatch(curr_minibatch2, i)
-            
 #            current_output = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
-            current_output = dssm_output(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
+        current_output = dssm_output(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
 #            current_output_list = current_output.tolist()
-            print "batch no %d" % (i)
-            tmplist = current_output[:, 0]
-            result.extend(tmplist)
-            
-
-        print "all batches in this iteraton is processed"
+        print "batch no %d" % (i)
+        tmplist = current_output[:, 0]
+        result.extend(tmplist)
         
-        for score in result:
-            if math.isnan(score):
-                break
-            outfile.write(str(score))
-            outfile.write("\n")
-                         
-        iteration += 1
+
+    print "all batches in this iteraton is processed"
+    
+    line_labelfile = labelfile.readline()
+    line_output = line_labelfile[:-1] + "\tDSSM\n"
+    outfile.write(line_output)
+    
+    for score in result:
+        if math.isnan(score):
+            break
+        
+        line_labelfile = labelfile.readline()
+        line_output = "%s\t%f\n" % (line_labelfile[:-1], score)
+#        outfile.write(str(score))
+        outfile.write(line_output)
+                     
 
     outfile.close()
-
+    labelfile.close()
     
     
     
@@ -913,6 +919,7 @@ if __name__ == '__main__':
 #    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
 #    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
     basedir_data = "./Dataset/train_10K_test_1K/WebSearch"
+#    basedir_data = "./Dataset/toy03"
     basedir_initmodel = "./Experiments/toy05/WebSearch/config_WebSearch_FullyConnect.txt.train"
     bin_file_train_1 = "%s/train.1.src.seq.fea.bin" % (basedir_data)
     bin_file_train_2 = "%s/train.1.tgt.seq.fea.bin" % (basedir_data)
@@ -920,7 +927,8 @@ if __name__ == '__main__':
     bin_file_test_2 = "%s/valid.1.tgt.seq.fea.bin" % (basedir_data)
     dssm_file_1 = "%s/DSSM_QUERY_ITER0" % (basedir_initmodel)
     dssm_file_2 = "%s/DSSM_DOC_ITER0" % (basedir_initmodel)
-    outputdir = "./Experiments/toy05/WebSearch/yw.train"
+    outputdir = "./Experiments/toy05/WebSearch/yw.train2"
+    labelfile = "./Dataset/train_10K_test_1K/WebSearch_rawdata/valid.label.1000.txt.unix"
     
     # parameters should be consistent with the dssm config file
     ntrial = 50
@@ -929,6 +937,8 @@ if __name__ == '__main__':
 
     dssm_file_1_simple = "%s_simple" % (dssm_file_1)
     dssm_file_2_simple = "%s_simple" % (dssm_file_2)
+
+    """
 
     # the following loop is convert the original dssm model to simple format
     for i in range(1):    
@@ -944,7 +954,6 @@ if __name__ == '__main__':
 #        dssm_file_2_simple = "%s_simple" % (dssm_file_2)
 #        convert_microsoftdssmmodel(dssm_file_2, dssm_file_2_simple)
     
-    """
 
     # the following loop is to conduct prediction using dssm model (simple version)
     for i in range(-1):#    i = 0
@@ -972,7 +981,7 @@ if __name__ == '__main__':
 #        outputfilename = "%s/yw_dssm_Q_%d_prediction" % (outputdir, i)
         outputfilename = "%s_prediction" % (dssm_file_1_predict)
     
-        train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, outputfilename)
+        train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, labelfile, outputfilename)
 
 
     print '----------------finished--------------------'
