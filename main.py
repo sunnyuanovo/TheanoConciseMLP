@@ -18,6 +18,57 @@ except ImportError:
 functionmode = 'DebugMode'
 functionmode = 'FAST_RUN'
 
+class ParameterSetting(object):
+    def __init__(self, configfilename):
+        # parameters should be consistent with the dssm config file
+        self.shift = 1
+        
+        f = open(configfilename, "r")
+        for line in f:
+            fields = line[:-2].split('\t')
+            
+            if fields[0] == "QFILE":
+                self.bin_file_train_1 = fields[1]
+                continue
+            elif fields[0] == "DFILE":
+                self.bin_file_train_2 = fields[1]
+                continue
+            elif fields[0] == "MODELPATH":
+#                pos = fields[1].rfind('\\')
+                self.outputdir = fields[1]
+                continue
+            elif fields[0] == "SEEDMODEL1":
+                # we need to convert dssm model from original format
+                dssm_file_1 = fields[1]
+                self.dssm_file_1_simple = "%s_simple" % (dssm_file_1)
+                if not os.path.exists(self.dssm_file_1_simple):
+                    convert_microsoftdssmmodel(dssm_file_1, self.dssm_file_1_simple)
+                continue
+            elif fields[0] == "SEEDMODEL2":
+                # we need to convert dssm model from original format
+                dssm_file_2 = fields[1]
+                self.dssm_file_2_simple = "%s_simple" % (dssm_file_2)
+                if not os.path.exists(self.dssm_file_2_simple):
+                    convert_microsoftdssmmodel(dssm_file_2, self.dssm_file_2_simple)
+                continue
+            elif fields[0] == "VALIDATEQFILE":
+                self.bin_file_test_1 = fields[1]
+                continue
+            elif fields[0] == "VALIDATEDFILE":
+                self.bin_file_test_2 = fields[1]
+                continue
+            elif fields[0] == "VALIDATEPAIR":
+                self.labelfile = fields[1]
+                continue
+            elif fields[0] == "NTRIAL":
+                self.ntrial = int(fields[1])
+                continue
+            elif fields[0] == "MAX_ITER":
+                self.max_iteration = int(fields[1])
+                continue
+        f.close()
+         
+
 class SimpleDSSMModelFormat(object):
     # only mlayer_num and mlink_num are integers
     # all other parameters are ndarray
@@ -918,6 +969,11 @@ if __name__ == '__main__':
 #    test_load_bin_file()    
 #    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
 #    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
+
+    configfilename = "./Experiments/toy05/config/config_WebSearch_FullyConnect.txt.train"
+    ps = ParameterSetting(configfilename)
+
+    """    
     basedir_data = "./Dataset/train_10K_test_1K/WebSearch"
 #    basedir_data = "./Dataset/toy03"
     basedir_initmodel = "./Experiments/toy05/WebSearch/config_WebSearch_FullyConnect.txt.train"
@@ -937,7 +993,7 @@ if __name__ == '__main__':
 
     dssm_file_1_simple = "%s_simple" % (dssm_file_1)
     dssm_file_2_simple = "%s_simple" % (dssm_file_2)
-
+    """
     """
 
     # the following loop is convert the original dssm model to simple format
@@ -965,23 +1021,23 @@ if __name__ == '__main__':
     
         train_dssm_with_minibatch_predictiononly(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputfilename)
     """
+#    sys.exit(0)
     
-    
-    if not os.path.exists(outputdir):
-        os.makedirs(outputdir)
-        
-#    train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
+    if not os.path.exists(ps.outputdir):
+        os.makedirs(ps.outputdir)
+
+    train_dssm_with_minibatch(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration)    
 #    train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
 
 #    sys.exit(0)
 
-    for i in range(max_iteration+1):
-        dssm_file_1_predict = "%s/yw_dssm_Q_%d" % (outputdir, i)
-        dssm_file_2_predict = "%s/yw_dssm_D_%d" % (outputdir, i)
+    for i in range(ps.max_iteration+1):
+        dssm_file_1_predict = "%s/yw_dssm_Q_%d" % (ps.outputdir, i)
+        dssm_file_2_predict = "%s/yw_dssm_D_%d" % (ps.outputdir, i)
 #        outputfilename = "%s/yw_dssm_Q_%d_prediction" % (outputdir, i)
         outputfilename = "%s_prediction" % (dssm_file_1_predict)
     
-        train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, labelfile, outputfilename)
+        train_dssm_with_minibatch_predictiononly(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename)
 
 
     print '----------------finished--------------------'

@@ -1,10 +1,9 @@
-QFILE	..\..\Dataset\toy03\train.1.src.seq.bin
-DFILE	..\..\Dataset\toy03\train.1.tgt.seq.bin
-LOGFILE	WebSearch\config_WebSearch_FullyConnect.txt.train\log.txt
-MODELPATH	WebSearch\config_WebSearch_FullyConnect.txt.train\DSSM
-VALIDATEQFILE	..\..\Dataset\toy03\train.1.src.seq.bin
-VALIDATEDFILE	..\..\Dataset\toy03\train.1.tgt.seq.bin
-VALIDATEPAIR	..\..\Dataset\toy03\valid.4.unix
+QFILE	Dataset\toy03\train.1.src.seq.bin
+DFILE	Dataset\toy03\train.1.tgt.seq.bin
+MODELPATH	Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train
+VALIDATEQFILE	Dataset\toy03\train.1.src.seq.bin
+VALIDATEDFILE	Dataset\toy03\train.1.tgt.seq.bin
+VALIDATEPAIR	Dataset\toy03\valid.4.unix
 VALIDATEPROCESS	C:\telsa01\EvaluationToolkit\yw_valid_eval_NDCG.bat
 BATCHSIZE	2
 NTRIAL	1
