@@ -449,7 +449,7 @@ def gradient_updates_momentum(cost, params, learning_rate, momentum, mbsize):
         """
 #        param_update = theano.shared(param.get_value()*0., broadcastable=param.broadcastable)
 #        updates.append((param_update, T.grad(cost, param)))
-        updates.append((param, param - (learning_rate*theano.grad(cost, param) / mbsize)))
+        updates.append((param, param - (learning_rate*theano.grad(cost, param) / float(mbsize))))
     return updates
 
 def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration):
