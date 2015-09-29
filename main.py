@@ -39,17 +39,17 @@ class ParameterSetting(object):
                 continue
             elif fields[0] == "SEEDMODEL1":
                 # we need to convert dssm model from original format
-                dssm_file_1 = fields[1]
-                self.dssm_file_1_simple = "%s_simple" % (dssm_file_1)
-                if not os.path.exists(self.dssm_file_1_simple):
-                    convert_microsoftdssmmodel(dssm_file_1, self.dssm_file_1_simple)
+                self.dssm_file_1_simple = fields[1]
+#                self.dssm_file_1_simple = "%s_simple" % (dssm_file_1)
+#                if not os.path.exists(self.dssm_file_1_simple):
+#                    convert_microsoftdssmmodel(dssm_file_1, self.dssm_file_1_simple)
                 continue
             elif fields[0] == "SEEDMODEL2":
                 # we need to convert dssm model from original format
-                dssm_file_2 = fields[1]
-                self.dssm_file_2_simple = "%s_simple" % (dssm_file_2)
-                if not os.path.exists(self.dssm_file_2_simple):
-                    convert_microsoftdssmmodel(dssm_file_2, self.dssm_file_2_simple)
+                self.dssm_file_2_simple = fields[1]
+#                self.dssm_file_2_simple = "%s_simple" % (dssm_file_2)
+#                if not os.path.exists(self.dssm_file_2_simple):
+#                    convert_microsoftdssmmodel(dssm_file_2, self.dssm_file_2_simple)
                 continue
             elif fields[0] == "VALIDATEQFILE":
                 self.bin_file_test_1 = fields[1]
@@ -970,8 +970,44 @@ if __name__ == '__main__':
 #    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
 #    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
 
-    configfilename = "./Experiments/toy05/config/config_WebSearch_FullyConnect.txt.train"
-    ps = ParameterSetting(configfilename)
+    if len(sys.argv) >=3:
+#        print 'Argument List', str(sys.argv)
+        if sys.argv[1] == "-convertmicrosoftdssmmodel":
+            assert(len(sys.argv) == 4)
+            print "We need to convert a dssm model file from Microsot Format to Simple Format"
+            convert_microsoftdssmmodel(sys.argv[2], sys.argv[3])
+        elif sys.argv[1] == "-train":
+            assert(len(sys.argv) == 3)
+            print "We need to train a dssm model fram the beginning"
+            if not os.path.exists(sys.argv[2]):
+                print sys.argv[2] + " doesn't exist!"
+            ps = ParameterSetting(sys.argv[2])
+
+            if not os.path.exists(ps.outputdir):
+                os.makedirs(ps.outputdir)
+        
+            train_dssm_with_minibatch(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration)    
+        #    train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
+        
+        #    sys.exit(0)
+        
+            for i in range(ps.max_iteration+1):
+                dssm_file_1_predict = "%s/yw_dssm_Q_%d" % (ps.outputdir, i)
+                dssm_file_2_predict = "%s/yw_dssm_D_%d" % (ps.outputdir, i)
+        #        outputfilename = "%s/yw_dssm_Q_%d_prediction" % (outputdir, i)
+                outputfilename = "%s_prediction" % (dssm_file_1_predict)
+            
+                train_dssm_with_minibatch_predictiononly(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename)
+        
+            
+    
+    else:
+        print 'Error\n'
+    sys.exit(0)
+
+
+    print '----------------finished--------------------'
+
 
     """    
     basedir_data = "./Dataset/train_10K_test_1K/WebSearch"
@@ -993,8 +1029,6 @@ if __name__ == '__main__':
 
     dssm_file_1_simple = "%s_simple" % (dssm_file_1)
     dssm_file_2_simple = "%s_simple" % (dssm_file_2)
-    """
-    """
 
     # the following loop is convert the original dssm model to simple format
     for i in range(1):    
@@ -1021,23 +1055,3 @@ if __name__ == '__main__':
     
         train_dssm_with_minibatch_predictiononly(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputfilename)
     """
-#    sys.exit(0)
-    
-    if not os.path.exists(ps.outputdir):
-        os.makedirs(ps.outputdir)
-
-    train_dssm_with_minibatch(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration)    
-#    train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration)    
-
-#    sys.exit(0)
-
-    for i in range(ps.max_iteration+1):
-        dssm_file_1_predict = "%s/yw_dssm_Q_%d" % (ps.outputdir, i)
-        dssm_file_2_predict = "%s/yw_dssm_D_%d" % (ps.outputdir, i)
-#        outputfilename = "%s/yw_dssm_Q_%d_prediction" % (outputdir, i)
-        outputfilename = "%s_prediction" % (dssm_file_1_predict)
-    
-        train_dssm_with_minibatch_predictiononly(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename)
-
-
-    print '----------------finished--------------------'
