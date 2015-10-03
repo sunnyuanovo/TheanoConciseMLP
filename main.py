@@ -11,6 +11,7 @@ import os.path
 #from main_rowbased import max_iteration
 
 from theano import tensor
+from theano.scalar.sharedvar import shared
 
 try:
     import cPickle as pickle
@@ -19,6 +20,9 @@ except ImportError:
     
 functionmode = 'DebugMode'
 functionmode = 'FAST_RUN'
+
+
+ONE = shared(1)
 
 class ParameterSetting(object):
     def __init__(self, configfilename):
@@ -160,6 +164,8 @@ class CosineLayer(object):
         Input: index_D is T.ivector(), shape = (?,)
         Input: Q is T.fmatrix(), shape=(bs, eb)
         Input: D is T.fmatrix(), shape = (bs, eb)
+        Input: One is T.fscalar()
+        
         Output: First, get two new matrices Q[index_Q] and D[index_D], both with shape (batch_size*(neg+1), embed_size).
                 Then for each row vector pair, compute cosine value
         """
@@ -170,7 +176,15 @@ class CosineLayer(object):
         dotQQ = (Q_view * Q_view).sum(axis = 1) #  Q[inds_Q]*D[inds_D]
         dotDD = (D_view * D_view).sum(axis = 1) #  Q[inds_Q]*D[inds_D]
         
-        dotQQDD_sqrt = tensor.sqrt(dotQQ*dotDD)
+        dotQQDD_sqrt = tensor.sqrt(dotQQ*dotDD) # some element might be zero, pay attention
+#        dotQQDD_sqrt == 0
+#        dotQQDD_sqrt[dotQQDD_sqrt == 0] = ONE # for if |a|*|b|==0, both a and b are zero vectors, the cosine should be 0. As long as the dominator >0, it's fine
+        
+#        new_r = set_subtensor(r[10:], 5)
+        
+#        dotQQDD_sqrt_smoothing = T.set_subtensor(dotQQDD_sqrt[dotQQDD_sqrt == 0], 1.0)
+        
+        
         
         return dotQD/dotQQDD_sqrt
 
@@ -373,7 +387,7 @@ class DSSM(object):
                 self.params += layer.params
                 self.params_D += layer.params
  
-
+            
     def output_train(self, index_Q, index_D, Q, D):
         '''
         Compute the DSSM's output given an input
@@ -415,6 +429,30 @@ class DSSM(object):
         
         # get the final output
 #        return  (-1 * column1.sum())
+
+    def output_train_tmp(self, Q, D):
+        # Recursively compute output
+        for layer in self.layers_Q:
+            Q = layer.output(Q)
+            break
+        for layer in self.layers_D:
+            D = layer.output(D)
+            break
+        return Q, D
+        
+#        cosine_matrix = self.layer_cosine.output(index_Q, index_D, Q, D) * 10 # scaling by 10 is suggested by Jianfeng Gao
+#        cosine_matrix = self.layer_cosine.output_noloop_1(index_Q, index_D, Q, D)
+        
+#        cosine_matrix_reshape = T.reshape(cosine_matrix, (self.layer_cosine.n_mbsize, self.layer_cosine.n_neg+1))
+        
+        # for this matrix, each line is a prob distribution right now.
+#        cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix_reshape)
+#        return cosine_matrix_reshape_softmax
+        
+        # get the first column, i.e. the column of positive pairs (Q,D)
+
+#        return cosine_matrix_reshape
+
     def output_test(self, index_Q, index_D, Q, D):
         '''
         Compute the DSSM's output given an input
@@ -553,6 +591,13 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 #    ywcost_scalar = ywcost.sum()
     ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
                              updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum, mbsize), mode=functionmode)
+
+    
+    ywcost_tmp = dssm.output_train_tmp(dssm_input_Q, dssm_input_D)
+#    ywcost_scalar = ywcost.sum()
+    ywtest_tmp = theano.function([dssm_input_Q, dssm_input_D], ywcost_tmp, mode=functionmode)
+    
+    
     # Keep track of the number of training iterations performed
     grad_ywcost = theano.grad(ywcost, dssm.params)
     grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
@@ -577,12 +622,18 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 
         # we scan all minibatches, except the last one  
         for i in range(usefulbatches):
-            print "Processing batch no %d\n" % (i)
             
+            if i %100 == 0:
+                print "Processing batch no %d\n" % (i)
+            
+            
+            i = 179
             inputstream1.setaminibatch(curr_minibatch1, i)
             inputstream2.setaminibatch(curr_minibatch2, i)
 
 #            grad_current_output =  grad_ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)           
+            current_output_tmp = ywtest_tmp(curr_minibatch1, curr_minibatch2)
+
             current_output = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
 #            print "batch no %d, %f\n" % (i, current_output)
 #           print current_output
@@ -1028,6 +1079,30 @@ def func_ComputeCosineMatrix(Q, inds_Q, D, inds_D):
 #tensor.sum(x, axis=x.ndim-1, keepdims=True)
 
 
+def test_broadcasts4():
+    """
+    This function is to implement Alex's idea.
+    The original query minibatch is represented by two matrix, Q and Q_MASK
+    """
+    Q = tensor.imatrix()
+    Q_MASK = tensor.imatrix()
+    W1 = tensor.fmatrix()
+    
+    W1Q = W1[Q]
+    Q_MASK_DIMSHUFFLE = Q_MASK.dimshuffle(0, 1, 'x')
+    M = W1Q * Q_MASK_DIMSHUFFLE
+    
+    func_index = theano.function([Q, Q_MASK,W1], [W1Q, Q_MASK_DIMSHUFFLE, M, M.sum(1)])
+    
+    Q_value = numpy.array([[1,2, 0], [4, 0, 0], [0, 0, 0], [2,3, 0]]).astype("int32")
+    Q_MASK_value = numpy.array([[1,1, 0], [1, 0, 0], [1, 0, 0], [1,1, 0]]).astype("int32")
+    W1_value = numpy.array([[1,2], [3,4], [5,6], [7,8], [9,10]]).astype("float32")
+                            
+    result = func_index(Q_value, Q_MASK_value, W1_value)
+    print result
+                            
+    
+
 def test_broadcasts3():
     
 
@@ -1170,8 +1245,8 @@ if __name__ == '__main__':
 #    basedir_data = "/home/yw/Documents/sigir2015/Dataset/toy03"
 #    basedir_initmodel = "/home/yw/Documents/sigir2015/Experiments/toy03/WebSearch/config_WebSearch_FullyConnect.txt.train"
 
-#    test_broadcasts3()
-#    sys.exit(0)
+    test_broadcasts4()
+    sys.exit(0)
 
     
     if len(sys.argv) >=3:
