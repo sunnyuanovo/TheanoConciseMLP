@@ -28,6 +28,7 @@ class ParameterSetting(object):
     def __init__(self, configfilename):
         # parameters should be consistent with the dssm config file
         self.shift = 1
+        self.SPARSE = True
         
         f = open(configfilename, "r")
         for line in f:
@@ -77,6 +78,11 @@ class ParameterSetting(object):
                 continue
             elif fields[0] == "VALIDATEDFILE_MAX_LENGTH":
                 self.VALIDATEDFILE_MAX_LENGTH = int(fields[1])
+                continue
+            elif fields[0] == "SPARSE":
+                self.SPARSE = False
+                if int(fields[1]) > 0:
+                    self.SPARSE = True
                 continue
         f.close()
          
@@ -408,7 +414,8 @@ class LayerWithoutBias(object):
         # Otherwise, apply the activation function
         return (lin_output if self.activation is None else self.activation(lin_output))
 
-
+    def output_linear(self, x):
+        return T.dot(x, self.W)
 
     def output_fromsparsemask(self, x, x_mask):
         '''
@@ -429,7 +436,12 @@ class LayerWithoutBias(object):
         x_mask_dimshuffle = x_mask.dimshuffle(0, 1, 'x')
         lin_output = (W_x * x_mask_dimshuffle).sum(1)
         return (lin_output if self.activation is None else self.activation(lin_output))
-        
+
+    def output_linear_fromsparsemask(self, x, x_mask):
+        W_x = self.W[x] # get a tensor3
+        x_mask_dimshuffle = x_mask.dimshuffle(0, 1, 'x')
+        lin_output = (W_x * x_mask_dimshuffle).sum(1)
+        return lin_output
 
 class DSSM(object):
     def __init__(self, W_init_Q, activations_Q, W_init_D, activations_D, strategy = 0):
@@ -472,7 +484,7 @@ class DSSM(object):
             for layer in self.layers_D:
                 self.params += layer.params
                 self.params_D += layer.params
- 
+
 
     def forward_from_denseinputs_to_embedding(self, Q, D):
         # Recursively compute output
@@ -496,14 +508,34 @@ class DSSM(object):
         return column1_neglog.sum()
 
     def forward_from_denseinputs_to_trainloss(self, index_Q, index_D, Q, D, batch_size, n_neg):
+        """
         Q_e, D_e = self.forward_from_denseinputs_to_embedding(Q, D)
         cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q_e, D_e)
         trainloss = self.forward_from_cosinelist_to_trainloss(cosine_list, batch_size, n_neg)
         return trainloss
+        """
+        for layer in self.layers_Q:
+            Q = layer.output(Q)
+        for layer in self.layers_D:
+            D = layer.output(D)
+        cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q, D)
+        cosine_matrix = T.reshape(cosine_list, (batch_size, n_neg+1))
+        cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix * 10)
+        column1 = cosine_matrix_reshape_softmax[:,0]
+        column1_neglog = -T.log(column1)
+        return column1_neglog.sum()
     
     def forward_from_denseinputs_to_cosinelist(self, index_Q, index_D, Q, D):
+        """
         Q_e, D_e = self.forward_from_denseinputs_to_embedding(Q, D)
         cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q_e, D_e)
+        return cosine_list
+        """
+        for layer in self.layers_Q:
+            Q = layer.output(Q)
+        for layer in self.layers_D:
+            D = layer.output(D)
+        cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q, D)
         return cosine_list
 
     def forward_from_sparseinputs_to_embedding(self, Q, Q_MASK, D, D_MASK):
@@ -520,15 +552,44 @@ class DSSM(object):
 
     
     def forward_from_sparseinputs_to_trainloss(self, index_Q, index_D, Q, Q_MASK, D, D_MASK, batch_size, n_neg):
+        """
         Q_e, D_e = self.forward_from_sparseinputs_to_embedding(Q, Q_MASK, D, D_MASK)
         cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q_e, D_e)
         trainloss = self.forward_from_cosinelist_to_trainloss(cosine_list, batch_size, n_neg)
         return trainloss
+        """
+        Q = self.layers_Q[0].output_fromsparsemask(Q, Q_MASK)
+        for index in range(1, len(self.layers_Q)):
+            Q = self.layers_Q[index].output(Q)
+            
+        D = self.layers_D[0].output_fromsparsemask(D, D_MASK)
+        for index in range(1, len(self.layers_D)):
+            D = self.layers_D[index].output(D)
+
+        cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q, D)
+        cosine_matrix = T.reshape(cosine_list, (batch_size, n_neg+1))
+        cosine_matrix_reshape_softmax = T.nnet.softmax(cosine_matrix * 10)
+        column1 = cosine_matrix_reshape_softmax[:,0]
+        column1_neglog = -T.log(column1)
+        return column1_neglog.sum()
 
     def forward_from_sparseinputs_to_cosinelist(self, index_Q, index_D, Q, Q_MASK, D, D_MASK):
+        """
         Q_e, D_e = self.forward_from_sparseinputs_to_embedding(Q, Q_MASK, D, D_MASK)
         cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q_e, D_e)
         return cosine_list
+        """
+        Q = self.layers_Q[0].output_fromsparsemask(Q, Q_MASK)
+        for index in range(1, len(self.layers_Q)):
+            Q = self.layers_Q[index].output(Q)
+            
+        D = self.layers_D[0].output_fromsparsemask(D, D_MASK)
+        for index in range(1, len(self.layers_D)):
+            D = self.layers_D[index].output(D)
+
+        cosine_list = self.layer_cosine.output_noloop_1(index_Q, index_D, Q, D)
+        return cosine_list
+        
                  
     def output_train(self, index_Q, index_D, Q, D):
         '''
@@ -743,6 +804,20 @@ def train_dssm_with_minibatch_from_denseinputs_to_trainloss(bin_file_train_1, bi
     func_train_output_last = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D, dssm_input_batchsize, dssm_input_neg], train_output,
                              updates=gradient_updates_momentum(train_output, dssm.params, learning_rate, momentum, inputstream1.BatchSizeLast), mode=functionmode)
 
+
+    qw1_prod_dense = dssm.layers_Q[0].output_linear(dssm_input_Q)
+    func_qw1_prod_dense = theano.function([dssm_input_Q], qw1_prod_dense, mode=functionmode)
+
+    qw1_tanh_dense = dssm.layers_Q[0].output(dssm_input_Q)
+    func_qw1_tanh_dense = theano.function([dssm_input_Q], qw1_tanh_dense, mode=functionmode)
+
+    
+    dw1_prod_dense = dssm.layers_D[0].output_linear(dssm_input_D)
+    func_dw1_prod_dense = theano.function([dssm_input_D], dw1_prod_dense, mode=functionmode)
+    
+    dw1_tanh_dense = dssm.layers_D[0].output(dssm_input_D)
+    func_dw1_tanh_dense = theano.function([dssm_input_D], dw1_tanh_dense, mode=functionmode)
+
     iteration = 1
     while iteration <= max_iteration:
         print "Iteration %d--------------" % (iteration)
@@ -751,6 +826,35 @@ def train_dssm_with_minibatch_from_denseinputs_to_trainloss(bin_file_train_1, bi
         trainLoss = 0.0
         curr_minibatch1 = np.zeros((inputstream1.BatchSize, init_model_1.in_num_list[0]), dtype = numpy.float32)
         curr_minibatch2 = np.zeros((inputstream2.BatchSize, init_model_2.in_num_list[0]), dtype = numpy.float32)
+
+        dumpfile = open("dump_numpy_dense", "w")
+        
+        for i in range(10):
+            inputstream1.setaminibatch(curr_minibatch1, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch(curr_minibatch2, i, init_model_2.in_num_list[0])
+            # the following is for linear output
+            numpy_qw1 = np.dot(curr_minibatch1, init_model_1.params[0]) # numpy product of dense
+            numpy_dw1 = np.dot(curr_minibatch2, init_model_2.params[0]) # numpy product of dense
+            theano_qw1 = func_qw1_prod_dense(curr_minibatch1)
+            theano_dw1 = func_dw1_prod_dense(curr_minibatch2)
+            # the following is for tanh
+            """
+            numpy_qw1 = np.tanh(np.dot(curr_minibatch1, init_model_1.params[0])) # numpy product of dense
+            numpy_dw1 = np.tanh(np.dot(curr_minibatch2, init_model_2.params[0])) # numpy product of dense
+            theano_qw1 = func_qw1_tanh_dense(curr_minibatch1)
+            theano_dw1 = func_dw1_tanh_dense(curr_minibatch2)
+            """
+            a = abs(numpy_qw1-theano_qw1)
+            b = abs(numpy_dw1-theano_dw1)
+            print i, np.ndarray.max(a), np.ndarray.max(b)
+
+            dumpfile.write(np.array_str(curr_minibatch1))
+            dumpfile.write(np.array_str(curr_minibatch2))
+#            dumpfile.write(np.array_str(numpy_qw1))
+#            dumpfile.write(np.array_str(numpy_dw1))
+        
+
+        dumpfile.close()
         
         for i in range(inputstream1.nTotalBatches-1):
             inputstream1.setaminibatch(curr_minibatch1, i, init_model_1.in_num_list[0])
@@ -854,6 +958,263 @@ def train_dssm_with_minibatch_from_denseinputs_to_cosinelist(bin_file_test_1, bi
             inputstream2.setaminibatch(curr_minibatch2, i, init_model_2.in_num_list[0])
 
             tmp_test_output = func_test_output(indexes_last[0], indexes_last[1], curr_minibatch1, curr_minibatch2)
+            result.extend(tmp_test_output)
+            
+        print "all batches in this iteraton is processed"
+
+        line_labelfile = labelfile.readline()
+        line_output = line_labelfile[:-1] + "\tDSSM\n"
+        outfile.write(line_output)
+        
+        for score in result:
+            if math.isnan(score):
+                break
+            
+            line_labelfile = labelfile.readline()
+            line_output = "%s\t%f\n" % (line_labelfile[:-1], score)
+    #        outfile.write(str(score))
+            outfile.write(line_output)
+                         
+    
+    outfile.close()
+    labelfile.close()
+
+def train_dssm_with_minibatch_from_sparseinputs_to_trainloss(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration, Q_MAX_LENGTH, D_MAX_LENGTH):
+    # 1. Load in the input streams
+    inputstream1 = InputStream(bin_file_train_1) # this will load in the whole file as origin. No modification at all
+    inputstream2 = InputStream(bin_file_train_2)
+    
+    # 2. Load in the network structure and initial weights from DSSM
+    init_model_1 = load_simpledssmmodel(dssm_file_1_simple)
+    activations_1 = [T.tanh] * init_model_1.mlink_num
+    
+    init_model_2 = load_simpledssmmodel(dssm_file_2_simple)
+    activations_2 = [T.tanh] * init_model_2.mlink_num
+
+    # Before iteration, dump out the init model 
+    outfilename_1 = os.path.join(outputdir, "yw_dssm_Q_0")
+    outfilename_2 = os.path.join(outputdir, "yw_dssm_D_0")
+    save_simpledssmmodel(outfilename_1, init_model_1)
+    save_simpledssmmodel(outfilename_2, init_model_2)
+    
+
+    # 3. Generate useful index structures
+    # We assue that each minibatch is of the same size, i.e. mbsize
+    # if the last batch has fewer samples, just ignore it
+    mbsize = inputstream1.BatchSize
+    indexes = generate_index(mbsize, ntrial, shift) # for a normal minibatch, we should use this indexes
+    
+    mbsize_last = inputstream1.BatchSizeLast
+    indexes_last = generate_index(mbsize_last, ntrial, shift) # for a normal minibatch, we should use this indexes
+    
+
+    # 4. Generate an instance of DSSM    
+    dssm = DSSM(init_model_1.params, activations_1, init_model_2.params, activations_2)
+
+    # Create Theano variables for the MLP input
+    dssm_index_Q = T.ivector('dssm_index_Q')
+    dssm_index_D = T.ivector('dssm_index_D')
+    dssm_input_Q = T.imatrix('dssm_input_Q')
+    dssm_input_D = T.imatrix('dssm_input_D')
+    dssm_input_Q_MASK = T.fmatrix('dssm_input_Q_MASK')
+    dssm_input_D_MASK = T.fmatrix('dssm_input_D_MASK')
+    dssm_input_batchsize = T.iscalar('dssm_input_batchsize')
+    dssm_input_neg = T.iscalar('dssm_input_neg')
+    # ... and the desired output
+    learning_rate = 0.1
+    momentum = 0.0
+    # Create a function for computing the cost of the network given an input
+    
+
+    train_output = dssm.forward_from_sparseinputs_to_trainloss(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_Q_MASK, dssm_input_D, dssm_input_D_MASK, dssm_input_batchsize, dssm_input_neg)
+
+    func_train_output_normal = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_Q_MASK, dssm_input_D, dssm_input_D_MASK, dssm_input_batchsize, dssm_input_neg], train_output,
+                             updates=gradient_updates_momentum(train_output, dssm.params, learning_rate, momentum, inputstream1.BatchSize), mode=functionmode)
+
+    func_train_output_last = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_Q_MASK, dssm_input_D, dssm_input_D_MASK, dssm_input_batchsize, dssm_input_neg], train_output,
+                             updates=gradient_updates_momentum(train_output, dssm.params, learning_rate, momentum, inputstream1.BatchSizeLast), mode=functionmode)
+
+
+
+    qw1_prod_sparse = dssm.layers_Q[0].output_linear_fromsparsemask(dssm_input_Q, dssm_input_Q_MASK)
+    func_qw1_prod_sparse = theano.function([dssm_input_Q, dssm_input_Q_MASK], qw1_prod_sparse, mode=functionmode)
+
+    qw1_tanh_sparse = dssm.layers_Q[0].output_fromsparsemask(dssm_input_Q, dssm_input_Q_MASK)
+    func_qw1_tanh_sparse = theano.function([dssm_input_Q, dssm_input_Q_MASK], qw1_tanh_sparse, mode=functionmode)
+
+
+    dw1_prod_sparse = dssm.layers_D[0].output_linear_fromsparsemask(dssm_input_D, dssm_input_D_MASK)
+    func_dw1_prod_sparse = theano.function([dssm_input_D, dssm_input_D_MASK], dw1_prod_sparse, mode=functionmode)
+
+    dw1_tanh_sparse = dssm.layers_D[0].output_fromsparsemask(dssm_input_D, dssm_input_D_MASK)
+    func_dw1_tanh_sparse = theano.function([dssm_input_D, dssm_input_D_MASK], dw1_tanh_sparse, mode=functionmode)
+
+
+    iteration = 1
+    while iteration <= max_iteration:
+        print "Iteration %d--------------" % (iteration)
+        print "Each iteration contains %d minibatches" % (inputstream1.nTotalBatches)
+        
+        trainLoss = 0.0
+        curr_minibatch1 = np.zeros((inputstream1.BatchSize, Q_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch2 = np.zeros((inputstream2.BatchSize, D_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch1_mask = np.zeros((inputstream1.BatchSize, Q_MAX_LENGTH), dtype = numpy.float32)
+        curr_minibatch2_mask = np.zeros((inputstream2.BatchSize, D_MAX_LENGTH), dtype = numpy.float32)
+        dense_minibatch1 = np.zeros((inputstream1.BatchSize, init_model_1.in_num_list[0]), dtype = numpy.float32)
+        dense_minibatch2 = np.zeros((inputstream2.BatchSize, init_model_2.in_num_list[0]), dtype = numpy.float32)
+
+
+        dumpfile = open("dump_numpy_sparse", "w")
+        for i in range(10):
+            inputstream1.setaminibatch(dense_minibatch1, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch(dense_minibatch2, i, init_model_2.in_num_list[0])
+            # the following is for linear output
+            numpy_qw1 = np.dot(dense_minibatch1, init_model_1.params[0]) # numpy product of dense
+            numpy_dw1 = np.dot(dense_minibatch2, init_model_2.params[0]) # numpy product of dense
+            
+            inputstream1.setaminibatch_sparse(curr_minibatch1, curr_minibatch1_mask, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch_sparse(curr_minibatch2, curr_minibatch2_mask, i, init_model_2.in_num_list[0])
+            theano_qw1 = func_qw1_prod_sparse(curr_minibatch1, curr_minibatch1_mask)
+            theano_dw1 = func_dw1_prod_sparse(curr_minibatch2, curr_minibatch2_mask)
+            
+#            theano_qw1 = func_qw1_prod_dense(dense_minibatch1)
+#            theano_dw1 = func_dw1_prod_dense(dense_minibatch2)
+            # the following is for tanh
+            """
+            numpy_qw1 = np.tanh(np.dot(dense_minibatch1, init_model_1.params[0])) # numpy product of dense
+            numpy_dw1 = np.tanh(np.dot(dense_minibatch2, init_model_2.params[0])) # numpy product of dense
+            theano_qw1 = func_qw1_tanh_dense(dense_minibatch1)
+            theano_dw1 = func_dw1_tanh_dense(dense_minibatch2)
+            """
+#            a = abs(numpy_qw1-theano_qw1)
+#            b = abs(numpy_dw1-theano_dw1)
+#            print i, np.ndarray.max(a), np.ndarray.max(b)
+            
+#            dumpfile.write(np.array_str(dense_minibatch1))
+#            dumpfile.write(np.array_str(dense_minibatch2))
+#            dumpfile.write(np.array_str(numpy_qw1))
+#            dumpfile.write(np.array_str(numpy_dw1))
+            """
+            for j in range(1024):
+                dumpfile.write(numpy_qw1[j, :])
+            for j in range(1024):
+                dumpfile.write(numpy_dw1[j, :])
+            """
+            
+        dumpfile.close()
+        
+        for i in range(inputstream1.nTotalBatches-1):
+            inputstream1.setaminibatch_sparse(curr_minibatch1, curr_minibatch1_mask, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch_sparse(curr_minibatch2, curr_minibatch2_mask, i, init_model_2.in_num_list[0])
+
+            tmp_train_output = func_train_output_normal(indexes[0], indexes[1], curr_minibatch1, curr_minibatch1_mask, curr_minibatch2, curr_minibatch2_mask, inputstream1.BatchSize, ntrial)
+            trainLoss += tmp_train_output
+            print "batch no %d, %f, %f" % (i, tmp_train_output, trainLoss)
+
+        # process the last batch
+        i = inputstream1.nTotalBatches-1 # 
+        curr_minibatch1 = np.zeros((inputstream1.BatchSizeLast, Q_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch2 = np.zeros((inputstream2.BatchSizeLast, D_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch1_mask = np.zeros((inputstream1.BatchSizeLast, Q_MAX_LENGTH), dtype = numpy.float32)
+        curr_minibatch2_mask = np.zeros((inputstream2.BatchSizeLast, D_MAX_LENGTH), dtype = numpy.float32)
+
+        
+        if True:
+            inputstream1.setaminibatch_sparse(curr_minibatch1, curr_minibatch1_mask, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch_sparse(curr_minibatch2, curr_minibatch2_mask, i, init_model_2.in_num_list[0])
+
+            tmp_train_output = func_train_output_last(indexes_last[0], indexes_last[1], curr_minibatch1, curr_minibatch1_mask, curr_minibatch2, curr_minibatch2_mask, inputstream1.BatchSize, ntrial)
+            trainLoss += tmp_train_output
+            print "batch no %d, %f, %f" % (i, tmp_train_output, trainLoss)
+            
+        print "all batches in this iteraton is processed"
+        print "trainLoss = %f" % (trainLoss)
+                     
+        # dump out current model separately
+        tmpparams = []
+        for W in dssm.params_Q:
+            tmpparams.append(W.get_value())
+        outfilename_1 = os.path.join(outputdir, "yw_dssm_Q_%d" % (iteration))
+        save_simpledssmmodel(outfilename_1, SimpleDSSMModelFormat(init_model_1.mlayer_num, init_model_1.layer_info, init_model_1.mlink_num, init_model_1.in_num_list, init_model_1.out_num_list, tmpparams))
+        
+
+        tmpparams = []
+        for W in dssm.params_D:
+            tmpparams.append(W.get_value())
+        outfilename_2 = os.path.join(outputdir, "yw_dssm_D_%d" % (iteration))
+        save_simpledssmmodel(outfilename_2, SimpleDSSMModelFormat(init_model_2.mlayer_num, init_model_2.layer_info, init_model_2.mlink_num, init_model_2.in_num_list, init_model_2.out_num_list, tmpparams))
+        
+        print "Iteration %d-------------- is finished" % (iteration)
+        
+        iteration += 1
+
+    print "-----The whole train process is finished-------\n"
+
+
+def train_dssm_with_minibatch_from_sparseinputs_to_cosinelist(bin_file_test_1, bin_file_test_2, dssm_file_1_simple, dssm_file_2_simple, labelfilename, outputfilename, Q_MAX_LENGTH, D_MAX_LENGTH):
+    # 0. open the outputfile
+    outfile = open(outputfilename, 'w')
+    labelfile = open(labelfilename, 'r')
+
+    # 1. Load in the input streams
+    inputstream1 = InputStream(bin_file_test_1) # this will load in the whole file as origin. No modification at all
+    inputstream2 = InputStream(bin_file_test_2)
+    
+    # 2. Load in the network structure and initial weights from DSSM
+    init_model_1 = load_simpledssmmodel(dssm_file_1_simple)
+    activations_1 = [T.tanh] * init_model_1.mlink_num
+    
+    init_model_2 = load_simpledssmmodel(dssm_file_2_simple)
+    activations_2 = [T.tanh] * init_model_2.mlink_num
+
+    # 3. Generate useful index structures
+    mbsize = inputstream1.BatchSize
+    mbsize_last = inputstream1.BatchSizeLast
+    indexes = [range(mbsize), range(mbsize)]
+    indexes_last = [range(mbsize_last), range(mbsize_last)]
+    
+    # 4. Generate an instance of DSSM    
+    dssm = DSSM(init_model_1.params, activations_1, init_model_2.params, activations_2)
+
+    # Create Theano variables for the MLP input
+    dssm_index_Q = T.ivector('dssm_index_Q')
+    dssm_index_D = T.ivector('dssm_index_D')
+    dssm_input_Q = T.imatrix('dssm_input_Q')
+    dssm_input_D = T.imatrix('dssm_input_D')
+    dssm_input_Q_MASK = T.fmatrix('dssm_input_Q_MASK')
+    dssm_input_D_MASK = T.fmatrix('dssm_input_D_MASK')
+    
+
+    test_output = dssm.forward_from_sparseinputs_to_cosinelist(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_Q_MASK, dssm_input_D, dssm_input_D_MASK)
+    func_test_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_Q_MASK, dssm_input_D, dssm_input_D_MASK], test_output, mode=functionmode)
+
+    iteration = 1
+    if iteration <= 1:
+        print "This prediction contains totally %d minibatches" % (inputstream1.nTotalBatches)
+        
+        curr_minibatch1 = np.zeros((inputstream1.BatchSize, Q_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch2 = np.zeros((inputstream2.BatchSize, D_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch1_mask = np.zeros((inputstream1.BatchSize, Q_MAX_LENGTH), dtype = numpy.float32)
+        curr_minibatch2_mask = np.zeros((inputstream2.BatchSize, D_MAX_LENGTH), dtype = numpy.float32)
+        result = []
+        
+        for i in range(inputstream1.nTotalBatches-1):
+            inputstream1.setaminibatch_sparse(curr_minibatch1, curr_minibatch1_mask, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch_sparse(curr_minibatch2, curr_minibatch2_mask, i, init_model_2.in_num_list[0])
+            tmp_test_output = func_test_output(indexes[0], indexes[1], curr_minibatch1, curr_minibatch1_mask, curr_minibatch2, curr_minibatch2_mask)
+            result.extend(tmp_test_output)
+            
+        # process the last batch
+        i = inputstream1.nTotalBatches-1 # 
+        curr_minibatch1 = np.zeros((inputstream1.BatchSizeLast, Q_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch2 = np.zeros((inputstream2.BatchSizeLast, D_MAX_LENGTH), dtype = numpy.int32)
+        curr_minibatch1_mask = np.zeros((inputstream1.BatchSizeLast, Q_MAX_LENGTH), dtype = numpy.float32)
+        curr_minibatch2_mask = np.zeros((inputstream2.BatchSizeLast, D_MAX_LENGTH), dtype = numpy.float32)
+
+        if True:
+            inputstream1.setaminibatch_sparse(curr_minibatch1, curr_minibatch1_mask, i, init_model_1.in_num_list[0])
+            inputstream2.setaminibatch_sparse(curr_minibatch2, curr_minibatch2_mask, i, init_model_2.in_num_list[0])
+            tmp_test_output = func_test_output(indexes_last[0], indexes_last[1], curr_minibatch1, curr_minibatch1_mask, curr_minibatch2, curr_minibatch2_mask)
             result.extend(tmp_test_output)
             
         print "all batches in this iteraton is processed"
@@ -1828,20 +2189,22 @@ if __name__ == '__main__':
             if not os.path.exists(ps.outputdir):
                 os.makedirs(ps.outputdir)
         
-            train_dssm_with_minibatch_from_denseinputs_to_trainloss(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration)    
-#            train_dssm_with_minibatch_fromsparsemask(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration, ps.QFILE_MAX_LENGTH, ps.DFILE_MAX_LENGTH)    
-#            train_dssm_with_minibatch(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration)    
+            if ps.SPARSE:
+                train_dssm_with_minibatch_from_sparseinputs_to_trainloss(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration, ps.QFILE_MAX_LENGTH, ps.DFILE_MAX_LENGTH)    
+#                print "ok"
+            else:
+                train_dssm_with_minibatch_from_denseinputs_to_trainloss(ps.bin_file_train_1, ps.bin_file_train_2, ps.dssm_file_1_simple, ps.dssm_file_2_simple, ps.outputdir, ps.ntrial, ps.shift, ps.max_iteration)    
         
         
             for i in range(ps.max_iteration+1):
                 dssm_file_1_predict = "%s/yw_dssm_Q_%d" % (ps.outputdir, i)
                 dssm_file_2_predict = "%s/yw_dssm_D_%d" % (ps.outputdir, i)
-        #        outputfilename = "%s/yw_dssm_Q_%d_prediction" % (outputdir, i)
                 outputfilename = "%s_prediction" % (dssm_file_1_predict)
-            
-                train_dssm_with_minibatch_from_denseinputs_to_cosinelist(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename)
-#                train_dssm_with_minibatch_predictiononly_fromsparsemask(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename, ps.VALIDATEQFILE_MAX_LENGTH, ps.VALIDATEDFILE_MAX_LENGTH)
-        
+
+                if ps.SPARSE:
+                    train_dssm_with_minibatch_from_sparseinputs_to_cosinelist(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename, ps.VALIDATEQFILE_MAX_LENGTH, ps.VALIDATEDFILE_MAX_LENGTH)
+                else:
+                    train_dssm_with_minibatch_from_denseinputs_to_cosinelist(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename)
             
     
     else:
