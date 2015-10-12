@@ -6,6 +6,7 @@ sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Utilities')
 import basic_utilities
 import test_utilities
 
+import NetworkComponents as nc
 
 import random
 
@@ -55,209 +56,6 @@ class SimpleDSSMModelFormat(object):
                 for j in range(out_size):
                     param[i,j] = random.random()*scale + bias
 
-
-
-class CosineLayer(object):
-    """
-
-    Given two inputs [q1 q2 .... qmb] and [d1 d2 ... dmb],
-    this class computes the pairwise cosine similarity 
-    between positive pairs and neg pairs
-    """
-    def output_noloop_1(self, index_Q, index_D, Q, D):
-        """
-        This function do the same as previous function "output", except that no loop or scan is used here
-        In this version 1, we don't use any broadcasting.
-        
-        Input: index_Q is T.ivector(), shape = (?,)
-        Input: index_D is T.ivector(), shape = (?,)
-        Input: Q is T.fmatrix(), shape=(bs, eb)
-        Input: D is T.fmatrix(), shape = (bs, eb)
-        Output: First, get two new matrices Q[index_Q] and D[index_D], both with shape (batch_size*(neg+1), embed_size).
-                Then for each row vector pair, compute cosine value
-        """
-        Q_view = Q[index_Q]
-        D_view = D[index_D]
-        
-        dotQD = (Q_view * D_view).sum(axis = 1) #  Q[inds_Q]*D[inds_D]
-        dotQQ = (Q_view * Q_view).sum(axis = 1) #  Q[inds_Q]*D[inds_D]
-        dotDD = (D_view * D_view).sum(axis = 1) #  Q[inds_Q]*D[inds_D]
-        
-        dotQQDD_sqrt = tensor.sqrt(dotQQ*dotDD)
-        
-        return dotQD/dotQQDD_sqrt
-        
-    def __init__(self, n_mbsize, n_neg, n_shift):
-        """ Initialize the parameters of the logistic regression
-
-        :type inputQ and inputD: theano.tensor.TensorType
-        :param input: symbolic variable that describes the input of the
-                      architecture (one minibatch)
-        
-        :type n_neg: int
-        :param n_neg: number of negative samples
-        
-        :type n_shift: int
-        :param n_out: shift of negative samples
-
-        """
-        # keep track of model input and target.
-        # We store a flattened (vector) version of target as y, which is easier to handle
-        self.n_mbsize = n_mbsize
-        self.n_neg = n_neg
-        self.n_shift = n_shift
-
-class Minibatch(object):
-    def __init__(self, SegSize, ElementSize, SampleIdx, SegIdx, FeaIdx, FeaVal):
-        '''
-        An instance of a single minibatch
-        All parameters are with the same names as those in WordHash
-
-        '''
-        
-        self.SegSize = SegSize # int scalar
-        self.ElementSize = ElementSize # int scalar
-        
-        self.m_rgSampleIdx = SampleIdx # an array of int
-        self.m_rgSegIdx = SegIdx # an array of int
-        self.m_rgFeaIdx = FeaIdx # an array of int
-        self.m_rgFeaVal = FeaVal # an array of float
-
-class InputStream(object):
-    # 1. Load and set last 5 integers
-    # 2. Load in all minibatches
-    def __init__(self, filename):
-        f = open(filename, "rb")
-        f.seek(-20, 2)
-        c = np.fromfile(f, dtype=np.uint32)
-
-        self.nMaxFeatureId =  c[0] # nMaxFeatureId
-        self.nLine = c[1] # nLine
-        self.nMaxSegmentSize = c[2] #  nMaxSegmentSize
-        self.nMaxFeatureNum = c[3] # nMaxFeatureNum
-        self.BatchSize = c[4] # BatchSize
-        
-        if self.nLine % self.BatchSize == 0:
-            self.nTotalBatches = self.nLine / self.BatchSize
-        else:
-            self.nTotalBatches = self.nLine / self.BatchSize + 1
-        
-        self.minibatches = [] # initial with an empty list
-        f.seek(0) # move to the beginning
-        for i in range(self.nTotalBatches):
-            SegSize, ElementSize = np.fromfile(f, dtype=np.uint32, count=2)
-            SampleIdx = np.fromfile(f, dtype=np.uint32, count=SegSize)
-            SegIdx = np.fromfile(f, dtype=np.uint32, count=SegSize)
-            FeaIdx = np.fromfile(f, dtype=np.uint32, count=ElementSize)
-            FeaVal = np.fromfile(f, dtype=np.float32, count=ElementSize)
-            self.minibatches.append(Minibatch(SegSize, ElementSize, SampleIdx, SegIdx, FeaIdx, FeaVal))
-        f.close()
-        
-    def setaminibatch(self, curr_minibatch, i):
-        '''
-        Set up current minibatch using self.minibatches[i]
-        minibatch is of Shape (inputstream1.BatchSize, inputstream1.nMaxFeatureId)
-        if this is the last batch, reshape it if necessary
-        '''
-        assert(i >= 0 and i < len(self.minibatches))
-        
-        curr_minibatch.fill(0.0)
-        minibatch_cols = curr_minibatch.shape[1] # used for remove OOV
-        
-#        tmp_minibatch = self.minibatches[i]
-        segid = 0 # default value
-        
-        for j in range(self.minibatches[i].SegSize):
-            # Suppose the array is [2,5,7]
-            # Iter 1: segid = 0, segidx = 2, this means we are working on the 1st query (seg), its featureid from [0,2)
-            # Iter 2: segid = 1, segidx = 5, this means we are working on the 2nd query (seg), its featureid from [2,5)
-            # Iter 3: segid = 2, segidx = 7, this means we are working on the 3rd query (seg), its featureid from [5,7)
-            segidx = self.minibatches[i].m_rgSegIdx[j]
-            if j == 0:
-                prev_segidx = 0
-            else:
-                prev_segidx = self.minibatches[i].m_rgSegIdx[j-1]
-            
-
-            for k in range(prev_segidx, segidx):
-                feaid = self.minibatches[i].m_rgFeaIdx[k]
-                feaval = self.minibatches[i].m_rgFeaVal[k]
-
-                # This step is to remove OOVs
-                # The shape of curr_minibatch is fixed. any index out of it is OOV                
-                if feaid < minibatch_cols:
-                    curr_minibatch[segid, feaid] = feaval
-
-            # empty check
-            if curr_minibatch[segid, :].sum() == 0.0:
-                curr_minibatch[segid, -1] = 1.0 
- 
-            
-            segid = segid +1
-            
-
-class LayerWithoutBias(object):
-    def __init__(self, W_init, activation):
-        '''
-        A layer of a neural network, computes s(Wx) where s is a nonlinearity and x is the input vector.
-
-        :parameters:
-            - W_init : np.ndarray, shape=(n_output, n_input)
-                Values to initialize the weight matrix to.
-            - activation : theano.tensor.elemwise.Elemwise
-                Activation function for layer output
-        '''
-        # Retrieve the input and output dimensionality based on W's initialization
-#        n_input, n_output = W_init.shape
-        # All parameters should be shared variables.
-        # They're used in this class to compute the layer output,
-        # but are updated elsewhere when optimizing the network parameters.
-        # Note that we are explicitly requiring that W_init has the theano.config.floatX dtype
-        self.W = theano.shared(value=W_init.astype(theano.config.floatX),
-                               # The name parameter is solely for printing purporses
-                               name='W',
-                               # Setting borrow=True allows Theano to use user memory for this object.
-                               # It can make code slightly faster by avoiding a deep copy on construction.
-                               # For more details, see
-                               # http://deeplearning.net/software/theano/tutorial/aliasing.html
-                               borrow=True)
-        self.activation = activation
-        # We'll compute the gradient of the cost of the network with respect to the parameters in this list.
-        self.params = [self.W]
-        
-    def output(self, x):
-        '''
-        Compute this layer's output given an input
-        
-        :parameters:
-            - x : theano.tensor.var.TensorVariable
-                Theano symbolic variable for layer input
-
-        :returns:
-            - output : theano.tensor.var.TensorVariable
-                Mixed, biased, and activated x
-        '''
-        # Compute linear mix
-        lin_output = T.dot(x, self.W)
-        # Output is just linear mix if no activation function
-        # Otherwise, apply the activation function
-        return (lin_output if self.activation is None else self.activation(lin_output))
-    def output_linear(self, x):
-        '''
-        Compute this layer's output given an input
-        
-        :parameters:
-            - x : theano.tensor.var.TensorVariable
-                Theano symbolic variable for layer input
-
-        :returns:
-            - output : theano.tensor.var.TensorVariable
-                Mixed, biased, and activated x
-        '''
-        # Compute linear mix
-        lin_output = T.dot(x, self.W)
-        return lin_output
-
 class DSSM(object):
     def __init__(self, W_init_Q, activations_Q, W_init_D, activations_D, n_mbsize, n_neg, n_shift, strategy = 0):
         '''
@@ -280,13 +78,13 @@ class DSSM(object):
             # Initialize lists of layers
             self.layers_Q = []
             for W, activation in zip(W_init_Q, activations_Q):
-                self.layers_Q.append(LayerWithoutBias(W, activation))
+                self.layers_Q.append(nc.LayerWithoutBias(W, activation))
             
             self.layers_D = []
             for W, activation in zip(W_init_D, activations_D):
-                self.layers_D.append(LayerWithoutBias(W, activation))
+                self.layers_D.append(nc.LayerWithoutBias(W, activation))
                 
-            self.layer_cosine = CosineLayer(n_mbsize, n_neg, n_shift)
+            self.layer_cosine = nc.CosineLayer(n_mbsize, n_neg, n_shift)
     
             # Combine parameters from all layers
             self.params = []
@@ -442,55 +240,14 @@ class DSSM(object):
 
         return cosine_matrix, cosine_matrix_reshape, cosine_matrix_reshape_softmax, column1, column1_neglog
 
-def gradient_updates_momentum(cost, params, learning_rate, momentum, mbsize):
-    '''
-    Compute updates for gradient descent with momentum
-    
-    :parameters:
-        - cost : theano.tensor.var.TensorVariable
-            Theano cost function to minimize
-        - params : list of theano.tensor.var.TensorVariable
-            Parameters to compute gradient against
-        - learning_rate : float
-            Gradient descent learning rate
-        - momentum : float
-            Momentum parameter, should be at least 0 (standard gradient descent) and less than 1
-   
-    :returns:
-        updates : list
-            List of updates, one for each parameter
-    '''
-    # Make sure momentum is a sane value
-    assert momentum < 1 and momentum >= 0
-    # List of update steps for each parameter
-    updates = []
-    # Just gradient descent on cost
-    for param in params:
-        """
-        # For each parameter, we'll create a param_update shared variable.
-        # This variable will keep track of the parameter's update step across iterations.
-        # We initialize it to 0
-        param_update = theano.shared(param.get_value()*0., broadcastable=param.broadcastable)
-        # Each parameter is updated by taking a step in the direction of the gradient.
-        # However, we also "mix in" the previous step according to the given momentum value.
-        # Note that when updating param_update, we are using its old value and also the new gradient step.
-        updates.append((param, param - learning_rate*param_update))
-        # Note that we don't need to derive backpropagation to compute updates - just use T.grad!
-        updates.append((param_update, momentum*param_update + (1. - momentum)*T.grad(cost, param)))
-        """
-#        param_update = theano.shared(param.get_value()*0., broadcastable=param.broadcastable)
-#        updates.append((param_update, T.grad(cost, param)))
-        updates.append((param, param - (learning_rate*theano.grad(cost, param) / float(mbsize))))
-    return updates
-
 def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration):
     # 1. Load in the input streams
     # Suppose the max seen feaid in the stream is 48930
     # then, inputstream1.nMaxFeatureId is 48931, which is one more
     # Ideally, the num_cols should be 48931
     # However, to make it conpatible with MS DSSM toolkit, we add it by one
-    inputstream1 = InputStream(bin_file_train_1) # this will load in the whole file as origin. No modification at all
-    inputstream2 = InputStream(bin_file_train_2)
+    inputstream1 = nc.InputStream(bin_file_train_1) # this will load in the whole file as origin. No modification at all
+    inputstream2 = nc.InputStream(bin_file_train_2)
     
 
     # 2. Load in the network structure and initial weights from DSSM
@@ -555,18 +312,18 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
     ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
 #    ywcost_scalar = ywcost.sum()
     ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
-                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum, mbsize), mode=functionmode)
-    ywtest_noupdate = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
-                             mode=functionmode)
+                             updates=basic_utilities.gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum, mbsize), mode=functionmode)
+#    ywtest_noupdate = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
+#                             mode=functionmode)
     # Keep track of the number of training iterations performed
-    grad_ywcost = theano.grad(ywcost, dssm.params)
-    grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
+#    grad_ywcost = theano.grad(ywcost, dssm.params)
+#    grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
  
-    train_embedding = dssm.output_embedding(dssm_input_Q, dssm_input_D)
-    func_train_embedding = theano.function([dssm_input_Q, dssm_input_D], train_embedding, mode=functionmode)
+#    train_embedding = dssm.output_embedding(dssm_input_Q, dssm_input_D)
+#    func_train_embedding = theano.function([dssm_input_Q, dssm_input_D], train_embedding, mode=functionmode)
     
-    train_output_complete = dssm.output_train_complete(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
-    func_train_output_complete = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], train_output_complete, mode=functionmode)
+#    train_output_complete = dssm.output_train_complete(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
+#    func_train_output_complete = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], train_output_complete, mode=functionmode)
     
     
     iteration = 1
@@ -627,190 +384,6 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 
     print "-----The whole train process is finished-------\n"
     
-def train_dssm_with_minibatch_gradient_check(bin_file_train_1, bin_file_train_2, dssm_file_1_simple, dssm_file_2_simple, outputdir, ntrial, shift, max_iteration):
-    # 1. Load in the input streams
-    # Suppose the max seen feaid in the stream is 48930
-    # then, inputstream1.nMaxFeatureId is 48931, which is one more
-    # Ideally, the num_cols should be 48931
-    # However, to make it conpatible with MS DSSM toolkit, we add it by one
-    inputstream1 = InputStream(bin_file_train_1) # this will load in the whole file as origin. No modification at all
-    inputstream2 = InputStream(bin_file_train_2)
-    
-
-    # 2. Load in the network structure and initial weights from DSSM
-    init_model_1 = load_simpledssmmodel(dssm_file_1_simple)
-    activations_1 = [T.tanh] * init_model_1.mlink_num
-    
-    init_model_2 = load_simpledssmmodel(dssm_file_2_simple)
-    activations_2 = [T.tanh] * init_model_2.mlink_num
-
-    # Before iteration, dump out the init model 
-    outfilename_1 = os.path.join(outputdir, "yw_dssm_Q_0")
-    outfilename_2 = os.path.join(outputdir, "yw_dssm_D_0")
-    save_simpledssmmodel(outfilename_1, init_model_1)
-    save_simpledssmmodel(outfilename_2, init_model_2)
-    
-
-
-    
-    # 3. Generate useful index structures
-    # We assue that each minibatch is of the same size, i.e. mbsize
-    # if the last batch has fewer samples, just ignore it
-    mbsize = inputstream1.BatchSize
-    indexes = basic_utilities.generate_index(mbsize, ntrial, shift) # for a normal minibatch, we should use this indexes
-#    indexes_lastone = generate_index(inputstream1.minibatches[-1].SegSize, ntrial, shift) # this is used for the last batch
-
-    # 4. Generate an instance of DSSM    
-    dssm = DSSM(init_model_1.params, activations_1, init_model_2.params, activations_2, mbsize, ntrial, shift )
-
-    # Create Theano variables for the MLP input
-    dssm_index_Q = T.ivector('dssm_index_Q')
-    dssm_index_D = T.ivector('dssm_index_D')
-    dssm_input_Q = T.matrix('dssm_input_Q')
-    dssm_input_D = T.matrix('dssm_input_D')
-    # ... and the desired output
-#    mlp_target = T.col('mlp_target')
-    # Learning rate and momentum hyperparameter values
-    # Again, for non-toy problems these values can make a big difference
-    # as to whether the network (quickly) converges on a good local minimum.
-    learning_rate = 0.1
-    momentum = 0.0
-    # Create a function for computing the cost of the network given an input
-    
-    """
-#    cost = mlp.squared_error(mlp_input, mlp_target)
-    cost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
-    cost_test = dssm.output_test(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
-        
-    # Create a theano function for training the network
-    train = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost,
-                            updates=gradient_updates_momentum(cost, dssm.params, learning_rate, momentum), mode=functionmode)
-    # Create a theano function for computing the MLP's output given some input
-    dssm_output = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], cost_test, mode=functionmode)
-    
-    """
-    """
-    ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
-    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost,
-                             updates=gradient_updates_momentum(ywcost, dssm.params, learning_rate, momentum), mode=functionmode)
-    """
-    ywcost = dssm.output_train(dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D)
-    grad_ywcost = theano.grad(ywcost, dssm.params)
-    
-    ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], ywcost, mode=functionmode)
-    grad_ywtest = theano.function([dssm_index_Q, dssm_index_D, dssm_input_Q, dssm_input_D], grad_ywcost, mode=functionmode)
-    # Keep track of the number of training iterations performed
- 
-    
-    
-    iteration = 1
-    while iteration <= max_iteration:
-        print "Iteration %d--------------" % (iteration)
-        print "Each iteration contains %d minibatches" % (inputstream1.nTotalBatches)
-        
-        trainLoss = 0.0
-
-        if inputstream1.BatchSize == inputstream1.minibatches[-1].SegSize:
-            usefulbatches = inputstream1.nTotalBatches
-        else:
-            usefulbatches = inputstream1.nTotalBatches -1
-        print "After removing the last incomplete batch, we need to process %d batches" % (usefulbatches)
-
-        curr_minibatch1 = np.zeros((inputstream1.BatchSize, init_model_1.in_num_list[0]), dtype = numpy.float32)
-        curr_minibatch2 = np.zeros((inputstream2.BatchSize, init_model_2.in_num_list[0]), dtype = numpy.float32)
-
-        # we scan all minibatches, except the last one  
-        for i in range(usefulbatches):
-            inputstream1.setaminibatch(curr_minibatch1, i)
-            inputstream2.setaminibatch(curr_minibatch2, i)
-            
-            current_output = grad_ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
-#            current_output /= (-2)
-#            print "batch no %d, %f\n" % (i, current_output)
-            print "batch no %d\n" % (i)
-            """
-            for tmp_output in current_output:
-                tmp_list = []
-                for m in range(5):
-                    for n in range(2):
-                        tmp_list.append(tmp_output[m,n])
-                print tmp_list
-            """
-#            print current_output
-#            trainLoss += current_output
-            for k in range(len(dssm.params)):
-                base_w = dssm.params[k].get_value() # get current weights
-                base_w_new = base_w - 0.1*current_output[k]
-                dssm.params[k].set_value(base_w_new)
-                print base_w
-                print current_output[k]
-                print base_w_new
-
-            """
-            # Next, we need to manually compute gradient
-            for k in range(len(dssm.params)):
-                base_w = dssm.params[k].get_value()
-                grad_base_w = base_w.copy()
-                eps = 0.0001
-                
-                for x in range(5):
-                    for y in range(2):
-                        base_w_plus = base_w.copy()
-                        base_w_plus[x,y] += eps
-                        base_w_neg = base_w.copy()
-                        base_w_neg[x,y] -= eps
-
-                        dssm.params[k].set_value(base_w_plus)
-                        current_output_plus = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
-                        dssm.params[k].set_value(base_w_neg)
-                        current_output_neg = ywtest(indexes[0], indexes[1], curr_minibatch1, curr_minibatch2)
-                        final_grad = (current_output_plus-current_output_neg)/(2*eps)
-                        grad_base_w[x,y] = final_grad
-#                print grad_base_w.tolist()
-                # first, dump out the theano.grad result
-                tmp_list = []
-                for m in range(5):
-                    for n in range(2):
-                        tmp_list.append(current_output[k][m,n])
-                print tmp_list
-
-                
-                
-                tmp_list = []
-                for m in range(5):
-                    for n in range(2):
-                        tmp_list.append(grad_base_w[m,n])
-                print tmp_list
-                dssm.params[k].set_value(base_w)
-            """
-                        
-            """                        
-            (x,y) = (0,0)
-            base_WQ = dssm.params_Q[0].get_value()
-            base_WQ_Plus = base_WQ.copy()
-            base_WQ_Plus[x,y] += eps
-            base_WQ_Neg = base_WQ.copy()
-            base_WQ_Neg[x,y] -= eps
-            """
-            
-            # compute plus
-
-            # set back the original weight            
-#            dssm.params_Q[0].set_value(base_WQ)
-            
-            
-            
-            
-
-        print "all batches in this iteraton is processed"
-        print "trainLoss = %f" % (trainLoss)
-                     
-        print "Iteration %d-------------- is finished" % (iteration)
-        
-        iteration += 1
-
-    print "-----The whole train process is finished-------\n"
-
 def train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, dssm_file_1_simple, dssm_file_2_simple, labelfilename, outputfilename):
     
     # 0. open the outputfile
@@ -822,8 +395,8 @@ def train_dssm_with_minibatch_predictiononly(bin_file_test_1, bin_file_test_2, d
     # then, inputstream1.nMaxFeatureId is 48931, which is one more
     # Ideally, the num_cols should be 48931
     # However, to make it conpatible with MS DSSM toolkit, we add it by one
-    inputstream1 = InputStream(bin_file_test_1) # this will load in the whole file as origin. No modification at all
-    inputstream2 = InputStream(bin_file_test_2)
+    inputstream1 = nc.InputStream(bin_file_test_1) # this will load in the whole file as origin. No modification at all
+    inputstream2 = nc.InputStream(bin_file_test_2)
     
     # 2. Load in the network structure and initial weights from DSSM
     init_model_1 = load_simpledssmmodel(dssm_file_1_simple)
