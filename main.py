@@ -1,5 +1,6 @@
 import sys
 sys.path.insert(0,'/u/yuanwei/scisoft/anaconda/lib/python2.7/site-packages')
+import random
 
 import math
 import numpy as np
@@ -77,12 +78,26 @@ class SimpleDSSMModelFormat(object):
     # only mlayer_num and mlink_num are integers
     # all other parameters are ndarray
     def __init__(self, mlayer_num, layer_info, mlink_num, in_num_list, out_num_list, params):
-        self.mlayer_num = mlayer_num
-        self.layer_info = layer_info
-        self.mlink_num = mlink_num
-        self.in_num_list = in_num_list
-        self.out_num_list = out_num_list
-        self.params = params
+        self.mlayer_num = mlayer_num    # 3
+        self.layer_info = layer_info    # array([48430,   128,   128], dtype=int32)
+        self.mlink_num = mlink_num      # 2
+        self.in_num_list = in_num_list  # [48430, 128]
+        self.out_num_list = out_num_list    # [128, 128]
+        self.params = params # a list of weights
+    
+    def reset_params_by_random(self, initseed):
+        # here, we need to reset self.params
+        random.seed(initseed)
+        
+        for param in self.params:
+            (in_size, out_size) = param.shape
+            scale = math.sqrt(6.0 / (in_size+out_size))*2
+            bias = -math.sqrt(6.0 / (in_size+out_size))
+            
+            for i in range(in_size):
+                for j in range(out_size):
+                    param[i,j] = random.random()*scale + bias
+        
         
     
 def generate_index(n_mbsize, n_neg, n_shift):
@@ -118,41 +133,6 @@ class CosineLayer(object):
     this class computes the pairwise cosine similarity 
     between positive pairs and neg pairs
     """
-    def ComputeCosineBetweenTwoVectors(self, q_ind, d_ind, Q, D):
-        '''
-        Compute Cosine similarity between two vectors: Q[q_ind] and D[d_ind]
-        
-        :parameters:
-            - q_ind, d_ind : int, i.e. Theano scalars
-                two indexes for corresponding vectors
-
-            - Q,D : theano.tensor.var.TensorVariable
-                Theano symbolic variable for layer input
-
-        :returns:
-            - output : theano.tensor.var.TensorVariable
-                Cosine value between two vectors
-        '''
-
-        # index is like (1,2)
-        q = Q[q_ind]
-        d = D[d_ind]
-        qddot = T.dot(q,d)
-        q_norm = T.sqrt((q**2).sum())
-        d_norm = T.sqrt((d**2).sum())
-        return qddot/(q_norm * d_norm)
-
-    def output(self, index_Q, index_D, Q, D):   
-        # components is a vector         
-        components, updates = theano.scan(self.ComputeCosineBetweenTwoVectors,
-                                  outputs_info=None,
-                                  sequences=[index_Q, index_D],
-                                  non_sequences=[Q,D])
-        
-        
-        # get the final output, which is a list of Tvariables
-        return components
-
     def output_noloop_1(self, index_Q, index_D, Q, D):
         """
         This function do the same as previous function "output", except that no loop or scan is used here
@@ -175,8 +155,6 @@ class CosineLayer(object):
         dotQQDD_sqrt = tensor.sqrt(dotQQ*dotDD)
         
         return dotQD/dotQQDD_sqrt
-
-
         
     def __init__(self, n_mbsize, n_neg, n_shift):
         """ Initialize the parameters of the logistic regression
@@ -592,9 +570,11 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 
     # 2. Load in the network structure and initial weights from DSSM
     init_model_1 = load_simpledssmmodel(dssm_file_1_simple)
+    init_model_1.reset_params_by_random(0)
     activations_1 = [T.tanh] * init_model_1.mlink_num
     
     init_model_2 = load_simpledssmmodel(dssm_file_2_simple)
+    init_model_2.reset_params_by_random(1)
     activations_2 = [T.tanh] * init_model_2.mlink_num
 
     # Before iteration, dump out the init model 
