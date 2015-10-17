@@ -1,14 +1,15 @@
 import sys
 sys.path.insert(0,'/u/yuanwei/scisoft/anaconda/lib/python2.7/site-packages')
 
-sys.path.append('./Utilities')  
+sys.path.append('/u/yuanwei/workspace/TheanoConciseMLP/Utilities')  
 sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Utilities')  
 import basic_utilities
 import test_utilities
 
-sys.path.append('./Network')  
+sys.path.append('/u/yuanwei/workspace/TheanoConciseMLP/Network')  
 sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Network')
 import SimpleDSSM
+import SimpleDSSM_1
 
 #from SimpleDSSM import *
 
@@ -40,6 +41,8 @@ functionmode = 'FAST_RUN'
 
 
 if __name__ == '__main__':
+#    SimpleDSSM_1.func_test1()
+#    test_utilities.func_testconcatenate()
     
     if len(sys.argv) >=3:
 #        print 'Argument List', str(sys.argv)
@@ -49,6 +52,8 @@ if __name__ == '__main__':
             SimpleDSSM.convert_microsoftdssmmodel(sys.argv[2], sys.argv[3])
         elif sys.argv[1] == "-train":
             SimpleDSSM.func_main(sys.argv[2])
+        elif sys.argv[1] == "-train_SimpleDSSM_1":
+            SimpleDSSM_1.func_main(sys.argv[2])
         
     else:
         print 'Error\n'

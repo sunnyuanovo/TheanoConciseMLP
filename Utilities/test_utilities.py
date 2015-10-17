@@ -15,6 +15,23 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
+    
+def func_testconcatenate():
+    a = T.matrix()
+    b = T.matrix()
+    ab0 = T.concatenate([a,b], axis = 1)
+#    ab1 = T.concatenate([a,b], axis = 1)
+    
+    func_con0 = theano.function([a,b], ab0)
+
+    A = [[1,2],[3,4]]
+    B = [[1,2],[3,4]]
+
+    AB0 = func_con0(A,B)
+    print AB0
+    
+    
+    
 
 def func_ComputeCosineMatrix(Q, inds_Q, D, inds_D):
     """

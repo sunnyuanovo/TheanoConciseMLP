@@ -1,8 +1,15 @@
-import sys
-sys.path.insert(0,'/u/yuanwei/scisoft/anaconda/lib/python2.7/site-packages')
+"""
+This network structure is the same as Microsoft DSSM.
+Both Q and D go through the same network, such as 49K-128-128
+A final cosine layer is applied to the embedding results.
+"""
 
-sys.path.append('../Utilities')  
-sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Utilities')  
+
+import sys
+#sys.path.insert(0,'/u/yuanwei/scisoft/anaconda/lib/python2.7/site-packages')
+
+#sys.path.append('../Utilities')  
+#sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Utilities')  
 import basic_utilities
 import test_utilities
 

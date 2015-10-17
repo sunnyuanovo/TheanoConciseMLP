@@ -1,8 +1,8 @@
 import sys
-sys.path.insert(0,'/u/yuanwei/scisoft/anaconda/lib/python2.7/site-packages')
+#sys.path.insert(0,'/u/yuanwei/scisoft/anaconda/lib/python2.7/site-packages')
 
-sys.path.append('../Utilities')  
-sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Utilities')  
+#sys.path.append('../Utilities')  
+#sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Utilities')  
 import basic_utilities
 import test_utilities
 

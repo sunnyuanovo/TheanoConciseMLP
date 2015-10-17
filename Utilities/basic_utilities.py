@@ -23,7 +23,9 @@ class ParameterSetting(object):
         
         f = open(configfilename, "r")
         for line in f:
-            fields = line[:-2].split('\t')
+            fields =  line.rstrip('\r\n').split('\t') # remove any trailing combinaiton of '\r' or '\n'
+            if len(fields) < 2:
+                continue
             
             if fields[0] == "QFILE":
                 self.bin_file_train_1 = fields[1]
@@ -64,6 +66,36 @@ class ParameterSetting(object):
             elif fields[0] == "MAX_ITER":
                 self.max_iteration = int(fields[1])
                 continue
+            
+            # below are parameters fro SimpleDSSM_1
+            elif fields[0] == "QFILE_1":
+                self.bin_file_train_src_1 = fields[1]
+                continue
+            elif fields[0] == "QFILE_2":
+                self.bin_file_train_src_2 = fields[1]
+                continue
+            elif fields[0] == "DFILE_1":
+                self.bin_file_train_tgt_1 = fields[1]
+                continue
+            elif fields[0] == "DFILE_2":
+                self.bin_file_train_tgt_2 = fields[1]
+                continue
+            elif fields[0] == "VALIDATEQFILE_1":
+                self.bin_file_test_src_1 = fields[1]
+                continue
+            elif fields[0] == "VALIDATEQFILE_2":
+                self.bin_file_test_src_2 = fields[1]
+                continue
+            elif fields[0] == "VALIDATEDFILE_1":
+                self.bin_file_test_tgt_1 = fields[1]
+                continue
+            elif fields[0] == "VALIDATEDFILE_2":
+                self.bin_file_test_tgt_2 = fields[1]
+                continue
+            elif fields[0] == "SimpleDSSM_1_NetworkStructure_src":
+                self.SimpleDSSM_1_NetworkStructure_src = fields[1]
+            elif fields[0] == "SimpleDSSM_1_NetworkStructure_tgt":
+                self.SimpleDSSM_1_NetworkStructure_tgt = fields[1]
         f.close()
 
 
