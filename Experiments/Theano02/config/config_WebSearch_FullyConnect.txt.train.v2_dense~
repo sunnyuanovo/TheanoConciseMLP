@@ -1,0 +1,16 @@
+QFILE	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.src.seq.fea.bin
+DFILE	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.tgt.seq.fea.bin
+VALIDATEQFILE	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.src.seq.fea.bin
+VALIDATEDFILE	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.tgt.seq.fea.bin
+VALIDATEPAIR	../../Dataset/train_4M_test_900K/WebSearch/test.label.unix
+SEEDMODEL1	initialmodels/DSSM_QUERY_ITER0_simple
+SEEDMODEL2	initialmodels/DSSM_DOC_ITER0_simple
+MODELPATH	WebSearch/config_WebSearch_FullyConnect.txt.train.v2_dense
+NTRIAL	50
+MAX_ITER	2
+QFILE_MAX_LENGTH	127
+DFILE_MAX_LENGTH	2078
+VALIDATEQFILE_MAX_LENGTH	103
+VALIDATEDFILE_MAX_LENGTH	1334
+SPARSE	0
+

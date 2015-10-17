@@ -1,0 +1,24 @@
+QFILE	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.src.seq.fea.bin
+DFILE	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.tgt.seq.fea.bin
+VALIDATEQFILE	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.src.seq.fea.bin
+VALIDATEDFILE	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.tgt.seq.fea.bin
+VALIDATEPAIR	../../Dataset/train_4M_test_900K/WebSearch/test.label.unix
+SEEDMODEL1	initialmodels/DSSM_QUERY_ITER0_simple_new
+SEEDMODEL2	initialmodels/DSSM_DOC_ITER0_simple_new
+MODELPATH	WebSearch/config_WebSearch_FullyConnect.txt.train
+NTRIAL	50
+MAX_ITER	2
+
+QFILE_1	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.src.seq.fea.bin
+QFILE_2	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.src.seq.fea.bin
+DFILE_1	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.tgt.seq.fea.bin
+DFILE_2	../../Dataset/train_4M_test_900K/WebSearch/train.QT.pair.1.tgt.seq.fea.bin
+VALIDATEQFILE_1	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.src.seq.fea.bin
+VALIDATEQFILE_2	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.src.seq.fea.bin
+VALIDATEDFILE_1	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.tgt.seq.fea.bin
+VALIDATEDFILE_2	../../Dataset/train_4M_test_900K/WebSearch/test.QT.pair.1.tgt.seq.fea.bin
+SimpleDSSM_1_NetworkStructure_src	500:128:128 500:128:128 256:128
+SimpleDSSM_1_NetworkStructure_tgt	500:128:128 500:128:128 256:128
+
+
+
