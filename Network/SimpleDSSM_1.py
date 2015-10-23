@@ -395,7 +395,9 @@ def train_dssm_with_minibatch(ps):
             
             current_output = func_train_output(indexes[0], indexes[1], curr_minibatch_src_1, curr_minibatch_src_2, curr_minibatch_tgt_1, curr_minibatch_tgt_2)
             trainLoss += current_output
-            print "%d\t%f\t%f" % (i, current_output, trainLoss)
+            
+            if i %100 == 0:
+                print "%d\t%f\t%f" % (i, current_output, trainLoss)
 
         print "all batches in this iteraton is processed"
         print "trainLoss = %f" % (trainLoss)

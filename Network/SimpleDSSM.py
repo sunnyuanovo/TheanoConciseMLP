@@ -366,7 +366,8 @@ def train_dssm_with_minibatch(bin_file_train_1, bin_file_train_2, dssm_file_1_si
 #           print current_output
             trainLoss += current_output
 #            print "After processing batch no %d, curr_loss = %f, trainLoss = %f" % (i, current_output, trainLoss)
-            print "%d\t%f\t%f" % (i, current_output, trainLoss)
+            if i%100 == 0:            
+                print "%d\t%f\t%f" % (i, current_output, trainLoss)
 
         print "all batches in this iteraton is processed"
         print "trainLoss = %f" % (trainLoss)
