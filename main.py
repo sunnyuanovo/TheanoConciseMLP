@@ -54,6 +54,8 @@ if __name__ == '__main__':
             SimpleDSSM.func_main(sys.argv[2])
         elif sys.argv[1] == "-train_SimpleDSSM_1":
             SimpleDSSM_1.func_main(sys.argv[2])
+        elif sys.argv[1] == "-train_SimpleDSSM_1_testonly":
+            SimpleDSSM_1.func_main_testonly(sys.argv[2])
         
     else:
         print 'Error\n'
