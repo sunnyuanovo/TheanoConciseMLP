@@ -540,9 +540,6 @@ def func_main_testonly(configfilename):
         sys.exit(0)
     ps = basic_utilities.ParameterSetting(configfilename)
 
-    if not os.path.exists(ps.outputdir):
-        os.makedirs(ps.outputdir)
-
     dssm_file_src_predict = ps.dssm_file_1_simple
     dssm_file_tgt_predict = ps.dssm_file_2_simple
     outputfilename = "%s_testonly" % (dssm_file_src_predict)

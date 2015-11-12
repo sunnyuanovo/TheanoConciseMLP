@@ -575,4 +575,17 @@ def func_main(configfilename):
     
         train_dssm_with_minibatch_predictiononly(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_1_predict, dssm_file_2_predict, ps.labelfile, outputfilename)
         
+def func_main_testonly(configfilename):
+    print "We need to evaluate a SimpleDSSM_1 model on some test data"
+    if not os.path.exists(configfilename):
+        print configfilename + " doesn't exist!"
+        sys.exit(0)
+    ps = basic_utilities.ParameterSetting(configfilename)
+
+    dssm_file_src_predict = ps.dssm_file_1_simple
+    dssm_file_tgt_predict = ps.dssm_file_2_simple
+    outputfilename = "%s_testonly" % (dssm_file_src_predict)
     
+    train_dssm_with_minibatch_predictiononly(ps.bin_file_test_1, ps.bin_file_test_2, dssm_file_src_predict, dssm_file_tgt_predict, ps.labelfile, outputfilename)
+        
+        

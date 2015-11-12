@@ -52,6 +52,8 @@ if __name__ == '__main__':
             SimpleDSSM.convert_microsoftdssmmodel(sys.argv[2], sys.argv[3])
         elif sys.argv[1] == "-train":
             SimpleDSSM.func_main(sys.argv[2])
+        elif sys.argv[1] == "-train_testonly":
+            SimpleDSSM.func_main_testonly(sys.argv[2])
         elif sys.argv[1] == "-train_SimpleDSSM_1":
             SimpleDSSM_1.func_main(sys.argv[2])
         elif sys.argv[1] == "-train_SimpleDSSM_1_testonly":
