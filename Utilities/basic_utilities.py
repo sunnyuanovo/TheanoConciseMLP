@@ -51,6 +51,9 @@ class ParameterSetting(object):
 #                if not os.path.exists(self.dssm_file_2_simple):
 #                    convert_microsoftdssmmodel(dssm_file_2, self.dssm_file_2_simple)
                 continue
+            elif fields[0] == "VALIDATEOUTPUT":
+                self.validateoutput = fields[1]
+                continue
             elif fields[0] == "VALIDATEQFILE":
                 self.bin_file_test_1 = fields[1]
                 continue
