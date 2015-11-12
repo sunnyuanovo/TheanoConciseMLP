@@ -542,6 +542,6 @@ def func_main_testonly(configfilename):
 
     dssm_file_src_predict = ps.dssm_file_1_simple
     dssm_file_tgt_predict = ps.dssm_file_2_simple
-    outputfilename = "%s_testonly" % (dssm_file_src_predict)
+    outputfilename = ps.validateoutput
     
     train_dssm_with_minibatch_predictiononly(ps, dssm_file_src_predict, dssm_file_tgt_predict, outputfilename)
