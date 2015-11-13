@@ -46,7 +46,7 @@ class ParameterSetting(object):
                 continue
             elif fields[0] == "SEEDMODEL2":
                 # we need to convert dssm model from original format
-                self.SEEDMODEL1 = fields[1]
+                self.SEEDMODEL2 = fields[1]
 #                self.dssm_file_2_simple = "%s_simple" % (dssm_file_2)
 #                if not os.path.exists(self.dssm_file_2_simple):
 #                    convert_microsoftdssmmodel(dssm_file_2, self.dssm_file_2_simple)

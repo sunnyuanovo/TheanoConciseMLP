@@ -383,7 +383,7 @@ def save_simpledssmmodel(filename, model):
 
 
 def func_main(configfilename):
-    print "We need to train a simple dssm model from the beginning"
+    print "Train SimpleDSSM_0. After each iteration, test it"
     if not os.path.exists(configfilename):
         print configfilename + " doesn't exist!"
         sys.exit(0)
@@ -392,7 +392,7 @@ def func_main(configfilename):
     if not os.path.exists(ps.MODELPATH):
         os.makedirs(ps.MODELPATH)
 
-#    train_dssm_with_minibatch(ps)
+    train_dssm_with_minibatch(ps)
     
     for i in range(ps.MAX_ITER+1):
         dssm_file_src = "%s/yw_dssm_Q_%d" % (ps.MODELPATH, i)
@@ -403,7 +403,7 @@ def func_main(configfilename):
         
         
 def func_main_testonly(configfilename):
-    print "We need to evaluate a SimpleDSSM_1 model on some test data"
+    print "Test a specific SimpleDSSM_0 for a specific triple (Q, T, label)"
     if not os.path.exists(configfilename):
         print configfilename + " doesn't exist!"
         sys.exit(0)
