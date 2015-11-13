@@ -19,7 +19,7 @@ except ImportError:
 class ParameterSetting(object):
     def __init__(self, configfilename):
         # parameters should be consistent with the dssm config file
-        self.shift = 1
+        self.SHIFT = 1
         
         f = open(configfilename, "r")
         for line in f:
@@ -28,46 +28,46 @@ class ParameterSetting(object):
                 continue
             
             if fields[0] == "QFILE":
-                self.bin_file_train_1 = fields[1]
+                self.QFILE = fields[1]
                 continue
             elif fields[0] == "DFILE":
-                self.bin_file_train_2 = fields[1]
+                self.DFILE = fields[1]
                 continue
             elif fields[0] == "MODELPATH":
 #                pos = fields[1].rfind('\\')
-                self.outputdir = fields[1]
+                self.MODELPATH = fields[1]
                 continue
             elif fields[0] == "SEEDMODEL1":
                 # we need to convert dssm model from original format
-                self.dssm_file_1_simple = fields[1]
+                self.SEEDMODEL1 = fields[1]
 #                self.dssm_file_1_simple = "%s_simple" % (dssm_file_1)
 #                if not os.path.exists(self.dssm_file_1_simple):
 #                    convert_microsoftdssmmodel(dssm_file_1, self.dssm_file_1_simple)
                 continue
             elif fields[0] == "SEEDMODEL2":
                 # we need to convert dssm model from original format
-                self.dssm_file_2_simple = fields[1]
+                self.SEEDMODEL1 = fields[1]
 #                self.dssm_file_2_simple = "%s_simple" % (dssm_file_2)
 #                if not os.path.exists(self.dssm_file_2_simple):
 #                    convert_microsoftdssmmodel(dssm_file_2, self.dssm_file_2_simple)
                 continue
             elif fields[0] == "VALIDATEOUTPUT":
-                self.validateoutput = fields[1]
+                self.VALIDATEOUTPUT = fields[1]
                 continue
             elif fields[0] == "VALIDATEQFILE":
-                self.bin_file_test_1 = fields[1]
+                self.VALIDATEQFILE = fields[1]
                 continue
             elif fields[0] == "VALIDATEDFILE":
-                self.bin_file_test_2 = fields[1]
+                self.VALIDATEDFILE = fields[1]
                 continue
             elif fields[0] == "VALIDATEPAIR":
-                self.labelfile = fields[1]
+                self.VALIDATEPAIR = fields[1]
                 continue
             elif fields[0] == "NTRIAL":
-                self.ntrial = int(fields[1])
+                self.NTRIAL = int(fields[1])
                 continue
             elif fields[0] == "MAX_ITER":
-                self.max_iteration = int(fields[1])
+                self.MAX_ITER = int(fields[1])
                 continue
             
             # below are parameters fro SimpleDSSM_1
@@ -95,6 +95,10 @@ class ParameterSetting(object):
             elif fields[0] == "VALIDATEDFILE_2":
                 self.bin_file_test_tgt_2 = fields[1]
                 continue
+            elif fields[0] == "SimpleDSSM_0_NetworkStructure_src":
+                self.SimpleDSSM_0_NetworkStructure_src = fields[1]
+            elif fields[0] == "SimpleDSSM_0_NetworkStructure_tgt":
+                self.SimpleDSSM_0_NetworkStructure_tgt = fields[1]
             elif fields[0] == "SimpleDSSM_1_NetworkStructure_src":
                 self.SimpleDSSM_1_NetworkStructure_src = fields[1]
             elif fields[0] == "SimpleDSSM_1_NetworkStructure_tgt":

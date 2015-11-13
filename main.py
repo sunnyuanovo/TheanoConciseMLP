@@ -9,6 +9,7 @@ import test_utilities
 sys.path.append('/u/yuanwei/workspace/TheanoConciseMLP/Network')  
 sys.path.append('/home/yw/workspace/test/TheanoConciseMLP/Network')
 import SimpleDSSM
+import SimpleDSSM_0
 import SimpleDSSM_1
 
 #from SimpleDSSM import *
@@ -54,6 +55,10 @@ if __name__ == '__main__':
             SimpleDSSM.func_main(sys.argv[2])
         elif sys.argv[1] == "-train_testonly":
             SimpleDSSM.func_main_testonly(sys.argv[2])
+        elif sys.argv[1] == "-train_SimpleDSSM_0":
+            SimpleDSSM_0.func_main(sys.argv[2])
+        elif sys.argv[1] == "-train_SimpleDSSM_0_testonly":
+            SimpleDSSM_0.func_main_testonly(sys.argv[2])
         elif sys.argv[1] == "-train_SimpleDSSM_1":
             SimpleDSSM_1.func_main(sys.argv[2])
         elif sys.argv[1] == "-train_SimpleDSSM_1_testonly":

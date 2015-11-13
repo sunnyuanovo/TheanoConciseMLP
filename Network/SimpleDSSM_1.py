@@ -153,6 +153,9 @@ class SimpleDSSM_1(object):
         return self.params
 
     def output_train(self, index_Q, index_D, Q_1, Q_2, D_1, D_2):
+        """
+        This is obsolete
+        """
         for layer in self.layers_Q_1:
             Q_1 = layer.output(Q_1)
         
@@ -190,6 +193,9 @@ class SimpleDSSM_1(object):
         return column1_neglog.sum()
 
     def output_test(self, index_Q, index_D, Q_1, Q_2, D_1, D_2):
+        """
+        This is obslete, don't use anymore
+        """
         for layer in self.layers_Q_1:
             Q_1 = layer.output(Q_1)
         
